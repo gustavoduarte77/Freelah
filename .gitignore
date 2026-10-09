@@ -1,0 +1,41 @@
+# dependências e builds
+node_modules/
+dist/
+build/
+.expo/
+.expo-shared/
+web-build/
+*.tsbuildinfo
+coverage/
+
+# variáveis de ambiente (só o .env.example é versionado)
+.env
+.env.*
+!.env.example
+
+# Prisma gerado (etapa 1)
+apps/api/src/generated/
+
+# sistema e editores
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# testes
+playwright-report/
+test-results/
+
+# credenciais e builds nativos
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.apk
+*.aab
+android/
+ios/

@@ -1,0 +1,31 @@
+{
+  "name": "freelah",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Freelah — conecta quem procura trabalho com quem precisa contratar um serviço.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:api": "npm run dev -w @freelah/api",
+    "dev:web": "npm run web -w @freelah/mobile",
+    "dev:mobile": "npm run start -w @freelah/mobile",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "check": "npm run lint && npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.12.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "8.70.1"
+  }
+}
