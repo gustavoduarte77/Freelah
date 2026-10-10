@@ -39,3 +39,10 @@ test-results/
 *.aab
 android/
 ios/
+
+# PostgreSQL local (demonstração offline e testes); dados em apps/api/.local-db
+apps/api/.local-db/
+
+# skills de terceiros do Claude Code (reinstalam-se pelo CLI do Neon); não fazem parte do produto
+.claude/skills/
+skills-lock.json

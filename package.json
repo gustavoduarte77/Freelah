@@ -13,6 +13,7 @@
   },
   "scripts": {
     "dev:api": "npm run dev -w @freelah/api",
+    "dev:api:neon": "npm run dev:neon -w @freelah/api",
     "dev:web": "npm run web -w @freelah/mobile",
     "dev:mobile": "npm run start -w @freelah/mobile",
     "test": "npm run test --workspaces --if-present",

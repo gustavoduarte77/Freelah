@@ -35,14 +35,32 @@ describe("rotas inexistentes", () => {
   });
 });
 
+const baseEnv = {
+  DATABASE_URL: "postgresql://u:p@127.0.0.1:5432/x",
+  BETTER_AUTH_SECRET: "x".repeat(32),
+};
+
 describe("loadConfig", () => {
+  it("usa as origens padrão do app e do navegador", () => {
+    const config = loadConfig(baseEnv);
+    expect(config.TRUSTED_ORIGINS).toEqual(["http://localhost:8081", "freelah://"]);
+    expect(config.BETTER_AUTH_URL).toBe("http://localhost:3333");
+  });
+
+  it("exige o banco e um segredo de autenticação forte", () => {
+    expect(() => loadConfig({ BETTER_AUTH_SECRET: "x".repeat(32) })).toThrow(/DATABASE_URL/);
+    expect(() => loadConfig({ DATABASE_URL: baseEnv.DATABASE_URL })).toThrow(/BETTER_AUTH_SECRET/);
+    expect(() => loadConfig({ ...baseEnv, BETTER_AUTH_SECRET: "curto" })).toThrow(/32 caracteres/);
+    expect(() => loadConfig({ ...baseEnv, DATABASE_URL: "mysql://x" })).toThrow(/postgresql/);
+  });
+
   it("usa valores padrão e separa as origens por vírgula", () => {
-    const config = loadConfig({ CORS_ORIGINS: "http://a.test, http://b.test" });
+    const config = loadConfig({ ...baseEnv, CORS_ORIGINS: "http://a.test, http://b.test" });
     expect(config.PORT).toBe(3333);
     expect(config.CORS_ORIGINS).toEqual(["http://a.test", "http://b.test"]);
   });
 
   it("rejeita uma porta inválida", () => {
-    expect(() => loadConfig({ PORT: "abc" })).toThrow(/inválidas/);
+    expect(() => loadConfig({ ...baseEnv, PORT: "abc" })).toThrow(/inválidas/);
   });
 });

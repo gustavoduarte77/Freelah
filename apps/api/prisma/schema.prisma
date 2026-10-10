@@ -1,0 +1,308 @@
+// Modelo de dados do Freelah (PRD seção 28).
+// Convenções: ids de negócio são UUID v7 (ordenáveis por criação); valores em centavos;
+// datas e horas em UTC. Regras que o Prisma não expressa (CHECK) ficam no SQL da migração.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Autenticação (Better Auth, etapa 2). Nomes e campos seguem o que a biblioteca espera.
+// ---------------------------------------------------------------------------
+
+model User {
+  id               String   @id
+  name             String
+  email            String   @unique
+  emailVerified    Boolean  @default(false)
+  // Telefone é PRIVADO: nunca entra em respostas públicas nem em listas de interessados.
+  phone            String
+  city             String
+  // PRD: avatarUrl. O Better Auth chama de "image"; o mapeamento é feito na etapa 2.
+  avatarUrl        String?
+  // Declaração obrigatória de maioridade (18+) feita no cadastro.
+  adultConfirmedAt DateTime
+  // Dado de demonstração (PRD 38.2): a interface mostra o selo "Demonstração".
+  isDemo           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  sessions        Session[]
+  accounts        Account[]
+  preference      UserPreference?
+  jobs            Job[]
+  interests       Interest[]
+  conversations   ConversationParticipant[]
+  messages        Message[]
+  reportsMade     Report[]                  @relation("ReportReporter")
+  reportsReceived Report[]                  @relation("ReportReported")
+  blocksMade      UserBlock[]               @relation("Blocker")
+  blocksReceived  UserBlock[]               @relation("Blocked")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  // Hash da senha (gerenciado pelo Better Auth); nunca texto puro.
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ---------------------------------------------------------------------------
+// Preferências de uso (PRD 8 e 28.2). Não são permissões.
+// CHECK na migração: pelo menos uma das duas deve ser verdadeira.
+// ---------------------------------------------------------------------------
+
+model UserPreference {
+  id          String   @id @default(uuid(7))
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wantsWork   Boolean
+  wantsToHire Boolean
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Categorias (PRD 12 e 28.3)
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String   @id @default(uuid(7))
+  name        String   @unique
+  // Identificador estável para filtros e URLs (ex.: "construcao-civil").
+  slug        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jobs Job[]
+}
+
+// ---------------------------------------------------------------------------
+// Oportunidades (PRD 13, 14, 28.4 e 28.11)
+// ---------------------------------------------------------------------------
+
+enum JobStatus {
+  DRAFT // Rascunho
+  PUBLISHED // Publicada
+  NEGOTIATING // Em negociação (a partir do 1º interessado)
+  HIRED // Contratada
+  COMPLETED // Concluída
+  CANCELLED // Cancelada
+  EXPIRED // Expirada
+}
+
+model Job {
+  id             String   @id @default(uuid(7))
+  title          String
+  description    String
+  additionalInfo String?
+  categoryId     String
+  category       Category @relation(fields: [categoryId], references: [id])
+  ownerId        String
+  owner          User     @relation(fields: [ownerId], references: [id])
+
+  city  String
+  state String @db.VarChar(2)
+
+  scheduledDate      DateTime @db.Date
+  // Horário previsto no formato "HH:MM".
+  startTime          String   @db.VarChar(5)
+  // Valor proposto em centavos (R$ 200,00 = 20000). CHECK >= 0 na migração.
+  proposedPriceCents Int
+  negotiable         Boolean  @default(false)
+  // Dado de demonstração (PRD 38.2): a interface mostra o selo "Demonstração".
+  isDemo             Boolean  @default(false)
+  // Fim do prazo de publicação.
+  expiresAt          DateTime
+
+  status      JobStatus @default(DRAFT)
+  publishedAt DateTime?
+  cancelledAt DateTime?
+
+  // Contratação (opção 1A): um único campo identifica o trabalhador selecionado.
+  // A seleção é feita com UPDATE condicional ao status dentro de transação (ver etapa 8).
+  selectedInterestId String?   @unique
+  selectedInterest   Interest? @relation("SelectedInterest", fields: [selectedInterestId], references: [id])
+  hiredAt            DateTime?
+  completedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interests     Interest[]
+  conversations Conversation[]
+  reports       Report[]
+
+  @@index([status, expiresAt])
+  @@index([categoryId])
+  @@index([ownerId, status])
+  @@index([city])
+}
+
+// ---------------------------------------------------------------------------
+// Interesses (PRD 17 e 28.5)
+// ---------------------------------------------------------------------------
+
+enum InterestStatus {
+  PENDING // Pendente
+  ACCEPTED // Aceito
+  REJECTED // Rejeitado
+  WITHDRAWN // Cancelado pelo interessado
+}
+
+model Interest {
+  id        String         @id @default(uuid(7))
+  jobId     String
+  job       Job            @relation(fields: [jobId], references: [id])
+  workerId  String
+  worker    User           @relation(fields: [workerId], references: [id])
+  status    InterestStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  selectedForJob Job?          @relation("SelectedInterest")
+  conversation   Conversation?
+
+  // Impede interesse duplicado, mesmo com requisições simultâneas.
+  @@unique([jobId, workerId])
+  @@index([workerId])
+}
+
+// ---------------------------------------------------------------------------
+// Chat (PRD 18 e 28.6 a 28.8)
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id         String   @id @default(uuid(7))
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id])
+  // Uma conversa por interesse (= por oportunidade + trabalhador): evita duplicidade (PRD 18.3).
+  interestId String   @unique
+  interest   Interest @relation(fields: [interestId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([jobId])
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid(7))
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  joinedAt       DateTime     @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(uuid(7))
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+  content        String       @db.VarChar(2000)
+  createdAt      DateTime     @default(now())
+  readAt         DateTime?
+
+  // Suporta a consulta de "mensagens depois de X" usada a cada 3 s.
+  @@index([conversationId, createdAt, id])
+}
+
+// ---------------------------------------------------------------------------
+// Segurança e moderação (PRD 23, 28.9 e 28.10)
+// ---------------------------------------------------------------------------
+
+enum ReportReason {
+  SPAM
+  INAPPROPRIATE
+  FRAUD
+  HARASSMENT
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model Report {
+  id             String       @id @default(uuid(7))
+  reporterId     String
+  reporter       User         @relation("ReportReporter", fields: [reporterId], references: [id])
+  reportedUserId String?
+  reportedUser   User?        @relation("ReportReported", fields: [reportedUserId], references: [id])
+  jobId          String?
+  job            Job?         @relation(fields: [jobId], references: [id])
+  reason         ReportReason
+  description    String?      @db.VarChar(1000)
+  status         ReportStatus @default(OPEN)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model UserBlock {
+  id            String   @id @default(uuid(7))
+  blockerId     String
+  blocker       User     @relation("Blocker", fields: [blockerId], references: [id])
+  blockedUserId String
+  blockedUser   User     @relation("Blocked", fields: [blockedUserId], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([blockerId, blockedUserId])
+  @@index([blockedUserId])
+}

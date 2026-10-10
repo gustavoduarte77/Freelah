@@ -1,3 +1,5 @@
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -6,11 +8,25 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Button } from "../src/components/ui";
 import { API_URL } from "../src/lib/api";
+import { authClient } from "../src/lib/auth-client";
 import { useApiHealth } from "../src/features/health/useApiHealth";
 
 export default function Index() {
   const { state, retry } = useApiHealth();
+  const router = useRouter();
+  const { data: session, isPending } = authClient.useSession();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      await authClient.signOut();
+    } finally {
+      setSigningOut(false);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -19,6 +35,28 @@ export default function Index() {
         <Text style={styles.tagline}>
           Encontre uma oportunidade ou alguém para seu serviço.
         </Text>
+
+        <View style={styles.statusBox}>
+          {isPending ? (
+            <ActivityIndicator />
+          ) : session ? (
+            <>
+              <Text style={styles.statusLabel}>Você entrou como</Text>
+              <Text style={styles.statusText}>{session.user.name}</Text>
+              <Text style={styles.hint}>{session.user.email}</Text>
+              <Button title="Sair" variant="link" onPress={signOut} loading={signingOut} />
+            </>
+          ) : (
+            <>
+              <Button title="Entrar" onPress={() => router.push("/entrar")} />
+              <Button
+                title="Criar conta"
+                variant="link"
+                onPress={() => router.push("/cadastrar")}
+              />
+            </>
+          )}
+        </View>
 
         <View style={styles.statusBox} accessibilityLiveRegion="polite">
           <Text style={styles.statusLabel}>Status da API</Text>
@@ -45,7 +83,7 @@ export default function Index() {
           <Text style={styles.hint}>{API_URL}</Text>
         </View>
 
-        <Text style={styles.footer}>Etapa 0 — fundação técnica</Text>
+        <Text style={styles.footer}>Etapa 2 — autenticação</Text>
       </View>
     </SafeAreaView>
   );

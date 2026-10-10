@@ -5,7 +5,8 @@
 ## Antes de começar
 
 - API no ar e app aberto na Web e no celular.
-- Banco com os dados de demonstração (seed da etapa 10), todos com o selo "Demonstração".
+- **Sem internet:** PostgreSQL local no ar (`npm run db:local -w @freelah/api`), API e Web no mesmo computador, Expo com `--offline`. Preparar e ensaiar com o Wi-Fi desligado (veja o README, "Demonstração sem internet"). O celular só funciona numa rede local compartilhada com o computador.
+- Banco com os dados de demonstração (seed da etapa 10), todos com `isDemo` e o selo "Demonstração". Para recomeçar do zero: `npm run db:reset:local -w @freelah/api` (só aceita banco local).
 - Duas contas prontas: a do contratante (Carlos) e uma conta nova que será criada ao vivo (João).
 
 ## História principal: João procura renda extra
