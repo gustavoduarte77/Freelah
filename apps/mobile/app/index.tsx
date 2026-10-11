@@ -1,11 +1,13 @@
-import type { PreferencesSyncState } from "@freelah/shared";
+import type { Preferences, PreferencesSyncState } from "@freelah/shared";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,6 +15,14 @@ import { Button } from "../src/components/ui";
 import { API_URL } from "../src/lib/api";
 import { authClient } from "../src/lib/auth-client";
 import { useApiHealth } from "../src/features/health/useApiHealth";
+import {
+  CategoryChips,
+  EmptyBox,
+  ErrorBox,
+  JobCard,
+  LoadingBox,
+} from "../src/features/jobs/components";
+import { useCategories, useJobsList } from "../src/features/jobs/hooks";
 import {
   preferencesScreenFor,
   usePreferencesSync,
@@ -23,6 +33,21 @@ import {
   OnboardingScreen,
   PreferencesLoading,
 } from "../src/features/preferences/PreferencesScreen";
+
+/** Preferências já conhecidas, só para ordenar os atalhos (PRD 30.3); nunca restringem nada. */
+function knownPreferences(state: PreferencesSyncState): Preferences | null {
+  switch (state.status) {
+    case "synced":
+    case "visitor_ready":
+      return state.preferences;
+    case "error":
+      return state.accountPreferences;
+    default:
+      return null;
+  }
+}
+
+const RECENT_LIMIT = 4;
 
 // TEMPORÁRIO (junto com a linha de status das preferências abaixo).
 function describePreferencesSync(state: PreferencesSyncState): string {
@@ -64,6 +89,9 @@ export default function Index() {
     resolveInvalidLocal,
   } = usePreferencesSync();
   const [signingOut, setSigningOut] = useState(false);
+  const [search, setSearch] = useState("");
+  const categories = useCategories();
+  const recent = useJobsList({ limit: RECENT_LIMIT });
 
   async function signOut() {
     setSigningOut(true);
@@ -75,7 +103,7 @@ export default function Index() {
   }
 
   // Onboarding, recuperação e carregamento das preferências substituem só o conteúdo desta tela.
-  const screen = preferencesScreenFor(prefsState, !isPending && !session);
+  const screen = preferencesScreenFor(prefsState);
   if (screen === "loading") return <PreferencesLoading />;
   if (screen === "onboarding" && (prefsState.status === "needs_onboarding" || prefsState.status === "visitor_needs_onboarding")) {
     return (
@@ -104,13 +132,80 @@ export default function Index() {
     return <LocalStorageError error={prefsState.error} busy={prefsState.busy} onRetry={retryPrefs} />;
   }
 
+  // A preferência só muda a ordem dos dois atalhos: os dois continuam visíveis para todos.
+  const preferences = knownPreferences(prefsState);
+  const publishFirst = Boolean(preferences?.wantsToHire && !preferences.wantsWork);
+  const findWork = (
+    <Button key="find" title="Encontrar trabalho" onPress={() => router.push("/explorar")} />
+  );
+  const publish = (
+    <View key="publish" style={styles.publish}>
+      <Button title="Publicar oportunidade" disabled onPress={() => undefined} />
+      <Text style={styles.hint}>Em breve: a publicação chega na próxima etapa.</Text>
+    </View>
+  );
+
+  function submitSearch() {
+    router.push({ pathname: "/explorar", params: search.trim() ? { q: search.trim() } : {} });
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
       <View style={styles.card}>
         <Text style={styles.brand}>Freelah</Text>
         <Text style={styles.tagline}>
           Encontre uma oportunidade ou alguém para seu serviço.
         </Text>
+
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          onSubmitEditing={submitSearch}
+          placeholder="Buscar serviço ou oportunidade"
+          accessibilityLabel="Buscar oportunidades"
+          returnKeyType="search"
+          style={styles.search}
+        />
+        <View style={styles.actions}>{publishFirst ? [publish, findWork] : [findWork, publish]}</View>
+
+        <Text style={styles.sectionTitle}>Categorias</Text>
+        {categories.state.status === "ready" ? (
+          <CategoryChips
+            categories={categories.state.data}
+            selected={null}
+            onSelect={(slug) =>
+              router.push({ pathname: "/explorar", params: slug ? { category: slug } : {} })
+            }
+          />
+        ) : categories.state.status === "error" ? (
+          <ErrorBox error={categories.state.error} onRetry={categories.retry} />
+        ) : (
+          <LoadingBox label="Carregando categorias…" />
+        )}
+
+        <Text style={styles.sectionTitle}>Oportunidades recentes</Text>
+        {recent.state.status === "loading" ? (
+          <LoadingBox label="Carregando oportunidades…" />
+        ) : recent.state.status === "error" ? (
+          <ErrorBox error={recent.state.error} onRetry={recent.retry} />
+        ) : recent.state.jobs.length === 0 ? (
+          <EmptyBox
+            title="Ainda não há oportunidades abertas"
+            text="Volte em breve: novas oportunidades aparecem aqui."
+          />
+        ) : (
+          <View style={styles.recent}>
+            {recent.state.jobs.map((job) => (
+              <JobCard key={job.id} job={job} />
+            ))}
+            <Button
+              title="Ver todas as oportunidades"
+              variant="link"
+              onPress={() => router.push("/explorar")}
+            />
+          </View>
+        )}
 
         <View style={styles.statusBox}>
           {isPending ? (
@@ -171,23 +266,33 @@ export default function Index() {
           <Text style={styles.hint}>{API_URL}</Text>
         </View>
 
-        <Text style={styles.footer}>Etapa 2 — autenticação</Text>
+        <Text style={styles.footer}>Início provisório — Etapa 4 (exploração)</Text>
       </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#F6F4EF",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
+  screen: { flex: 1, backgroundColor: "#F6F4EF" },
+  scroll: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 16 },
+  search: {
+    borderWidth: 1,
+    borderColor: "#D5DAE0",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    backgroundColor: "#FFFFFF",
+    color: "#1F2933",
   },
+  actions: { gap: 12 },
+  publish: { gap: 6 },
+  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#1F2933", marginTop: 8 },
+  recent: { gap: 12 },
   card: {
     width: "100%",
-    maxWidth: 480,
+    maxWidth: 720,
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 24,

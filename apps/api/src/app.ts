@@ -10,6 +10,7 @@ import { toNodeHandler } from "better-auth/node";
 import type { Auth } from "./auth";
 import type { Config } from "./config";
 import type { PrismaClient } from "./db";
+import { createJobsRouter } from "./routes/jobs";
 import { createMeRouter } from "./routes/me";
 import { createPreferencesRouter } from "./routes/preferences";
 
@@ -45,6 +46,8 @@ export function createApp(
 
   if (auth) app.use(createMeRouter(auth));
   if (auth && prisma) app.use(createPreferencesRouter(auth, prisma));
+  // Categorias e oportunidades são públicas (PRD 9): não dependem de sessão.
+  if (prisma) app.use(createJobsRouter(prisma));
 
   const notFound: RequestHandler = (_req, res) => {
     res.status(404).json({ error: "not_found", message: "Rota não encontrada." });

@@ -10,7 +10,7 @@ Referência: PRD v2.0. Este arquivo registra o andamento, as simplificações ad
 | 1 | Prisma 7 + Neon: tabelas, migração, seed de categorias | 1 | Concluída (migração e seed aplicados no Neon `production` e no banco local; 46 testes passando) |
 | 2 | Better Auth: cadastro (com declaração 18+), login, logout, sessão nas 3 plataformas | 1 | Concluída na API e na Web; falta conferir a sessão no celular (Expo Go) |
 | 3 | Onboarding, preferências (local e na conta), configurações, abas por preferência | 2 | **Em andamento**: contrato compartilhado, API de preferências (`GET`/`PUT /me/preferences`) camada de armazenamento local e sincronização com a conta (testada em Chromium contra API e banco local) implementados e verificados; e onboarding (visitante e com sessão, com recuperação de dado local inválido; verificado no Chromium) implementados; pendentes configurações e abas |
-| 4 | Home, Explorar, busca, filtros, detalhes (públicos), identidade visual | 2 | Pendente |
+| 4 | Home, Explorar, busca, filtros, detalhes (públicos), identidade visual | 2 | **Em andamento**: API pública, contrato, telas de Explorar e Detalhes, Home mínima, seed de demonstração local e retorno ao detalhe após login implementados e verificados na Web (Chromium); pendentes abas, identidade visual e conferência no celular |
 | 5 | Publicar (revisão e rascunho), editar, cancelar, Minhas oportunidades, expiração | 3 | Pendente |
 | 6 | Interesse, lista de interessados, Meus interesses | 4 | Pendente |
 | 7 | Chat (consulta a cada 3 s, buscando só mensagens novas) | 4 | Pendente |
@@ -60,6 +60,19 @@ Referência: PRD v2.0. Este arquivo registra o andamento, as simplificações ad
 | Telemetria | Desligada, para funcionar offline e não enviar dados para fora |
 | Rota protegida | `requireAuth` + `GET /me`. As demais rotas protegidas (etapas seguintes) reutilizam o middleware |
 | Cookies entre domínios | Web e API em `localhost` (portas diferentes) são o mesmo site. No deploy, se ficarem em domínios diferentes, será preciso rever `SameSite`/`Secure` (etapa 10) |
+
+## Decisões da exploração (etapa 4)
+
+| Tema | Decisão |
+|---|---|
+| Visibilidade | A lista só traz `PUBLISHED` e `NEGOTIATING` dentro do prazo e com categoria ativa. O detalhe abre qualquer estado exceto rascunho, com aviso do estado e do motivo (PRD 13.4) |
+| Expiração | Calculada na leitura (`expiresAt`); a etapa 5 deve criar a rotina que grava `EXPIRED`. Uma oportunidade `NEGOTIATING` com prazo vencido também é tratada como expirada (regra a revisar nas etapas 5 e 8) |
+| Busca | Texto em título, descrição e categoria, sem acento-insensível (sem `unaccent`), com curingas do LIKE escapados |
+| Paginação | Cursor opaco por (`publishedAt`, `id`): estável com datas iguais |
+| Privacidade | Do contratante só nome e cidade; o telefone nunca sai da API pública |
+| Demonstração | Seed idempotente só no banco local (`db:seed:demo`); não há comando para o Neon |
+| Navegação | Pilha simples Home, Explorar, Detalhes; sem abas ainda. A preferência só reordena os atalhos da Home |
+| Ação protegida | "Tenho interesse" leva ao login e volta ao detalhe; o registro de interesse (etapa 6) não é simulado |
 
 ## Decisões das preferências (etapa 3)
 

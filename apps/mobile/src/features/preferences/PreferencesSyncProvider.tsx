@@ -15,6 +15,10 @@ export function PreferencesSyncProvider({ children }: { children: ReactNode }) {
       // Só sessão resolvida e sem usuário conta como logout; carregando ou com erro, não.
       preferencesSync.stop();
       preferencesSync.startVisitor();
+    } else if (!isPending && preferencesSync.getState().status === "signed_out") {
+      // Erro ao consultar a sessão (por exemplo, API fora do ar) com o app recém-aberto: não é
+      // logout e nada é apagado, mas a pessoa ainda precisa ver as preferências deste aparelho.
+      preferencesSync.startVisitor();
     }
   }, [userId, isPending, error]);
 
@@ -46,13 +50,10 @@ export type PreferencesScreenKind = "loading" | "onboarding" | "invalid_local" |
  * Qual tela de preferências substitui o conteúdo da tela inicial (ou `null` para mostrar a tela
  * normal). Erros de rede/API de quem já tem sessão não bloqueiam: aparecem na linha de status.
  */
-export function preferencesScreenFor(
-  state: PreferencesSyncState,
-  sessionResolvedWithoutUser: boolean,
-): PreferencesScreenKind | null {
+export function preferencesScreenFor(state: PreferencesSyncState): PreferencesScreenKind | null {
   switch (state.status) {
-    case "signed_out":
-      return sessionResolvedWithoutUser ? "loading" : null;
+    case "signed_out": // a sessão ainda está sendo consultada
+      return "loading";
     case "visitor_loading":
     case "syncing":
       return "loading";
