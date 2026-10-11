@@ -1,6 +1,6 @@
-# Notas de sessão — checkpoint das etapas 1 e 2
+# Notas de sessão
 
-Data: 2026-10-09. Este arquivo resume onde o projeto parou para quem retomar o trabalho. Os requisitos continuam no [PRD](PRD.md), o andamento por etapa em [roadmap.md](roadmap.md) e as instruções de instalação no [README](../README.md). Não há credenciais aqui.
+Checkpoint das etapas 1 e 2 em 2026-10-09; atualizado em 2026-10-11 com o início da etapa 3. Este arquivo resume onde o projeto parou para quem retomar o trabalho. Os requisitos continuam no [PRD](PRD.md), o andamento por etapa em [roadmap.md](roadmap.md) e as instruções de instalação no [README](../README.md). Não há credenciais aqui.
 
 ## Estado atual
 
@@ -9,7 +9,8 @@ Data: 2026-10-09. Este arquivo resume onde o projeto parou para quem retomar o t
 | 0. Fundação técnica | Concluída |
 | 1. Banco de dados (Prisma 7 + PostgreSQL) | Concluída |
 | 2. Autenticação (Better Auth) | Concluída na API e na Web; **falta conferir a sessão no celular (Expo Go)** |
-| 3 em diante | Não iniciadas |
+| 3. Preferências, onboarding e navegação | **Em andamento**: contrato compartilhado e API de preferências prontos e verificados; o restante está pendente (veja abaixo) |
+| 4 em diante | Não iniciadas |
 
 **Banco de dados**
 - Schema e migração inicial (`20261009000000_init`) aplicados no Neon (branch `production`) e no PostgreSQL local. Cada um tem as 14 tabelas e as 5 categorias do MVP, e **nenhum usuário**.
@@ -21,6 +22,12 @@ Data: 2026-10-09. Este arquivo resume onde o projeto parou para quem retomar o t
 - O telefone é privado: só aparece no `GET /me`, para o dono da conta.
 - Sem verificação de e-mail e sem recuperação de senha (não há provedor de e-mail).
 
+**Preferências de uso (etapa 3, só o backend)**
+- Contrato em `packages/shared/src/preferences.ts` e rotas em `apps/api/src/routes/preferences.ts`: `GET /me/preferences` (devolve `{ preferences: null }` se a conta ainda não escolheu) e `PUT /me/preferences` (grava só as preferências do usuário da sessão).
+- Rejeita com 400 as duas opções desativadas (`at_least_one_required`) e campos desconhecidos, inclusive `userId` (`validation_error`). Mensagens em português; resposta com `Cache-Control: no-store`.
+- Preferências não são permissões: a rota só toca em `UserPreference` e os testes provam que publicações, interesses, conversas e perfil não mudam.
+- `createApp` exige o Prisma sempre que recebe a autenticação (sobrecargas de tipo), para que a rota nunca fique indisponível em silêncio.
+
 **Ambientes de banco** (mesmo schema e mesmas migrações; a `DATABASE_URL` escolhe o banco)
 - Local (padrão, funciona sem internet): `npm run db:local -w @freelah/api` (PostgreSQL 17 embutido no `node_modules`).
 - Neon (equipe): arquivo `apps/api/.env.neon` e comandos `db:deploy:neon`, `db:seed:neon` e `dev:api:neon`.
@@ -29,12 +36,19 @@ Data: 2026-10-09. Este arquivo resume onde o projeto parou para quem retomar o t
 ## Testes (última execução, `npm run check`)
 
 - Lint e typecheck sem erros.
-- API: 5 arquivos, 61 testes passando (inclui integração com banco real: cadastro, 18+, duplicidade, sessão, CSRF e as regras do banco).
-- Pacote compartilhado: 2 arquivos, 16 testes passando.
+- API: 6 arquivos, 79 testes passando (integração com banco real: cadastro, 18+, duplicidade, sessão, CSRF, regras do banco e as 18 de preferências: autenticação, leitura, gravação, persistência após sair e entrar, gravações simultâneas, validação, isolamento entre usuários e dados que não mudam).
+- Pacote compartilhado: 3 arquivos, 25 testes passando (9 deles do contrato de preferências).
+- Verificação manual das rotas de preferências por HTTP contra a API real e o banco local (401, `null`, gravação, os dois erros 400 e o cabeçalho), com limpeza dos dados de teste.
 - Interface na Web (Chromium via Playwright, script temporário fora do projeto): 14 passos passando (cadastro, validações, sessão após recarregar, sair, login e erros em português).
 - Chamadas do app nativo simuladas por HTTP (`expo-origin`, origem `exp://` e cookie reenviado): aceitas.
 
 ## Pendências
+
+**Etapa 3 (ainda não feito):** armazenamento local de preferências (`localStorage` na Web, `expo-secure-store` no celular, sem dependência nova), sincronização no primeiro login, tela de onboarding, configurações ("Preferências de uso"), abas por preferência com placeholders "Em breve" e o cliente do app para as rotas.
+
+**Limitações da API de preferências ainda não verificadas:** não foi exercitada contra o Neon (só contra o banco local) e nenhuma tela do app consome as rotas ainda.
+
+**Pendências gerais:**
 
 1. **Sessão no celular:** testar no Expo Go (SecureStore): criar conta, fechar e reabrir o app, e confirmar que continua logado. Exige `EXPO_PUBLIC_API_URL` com o IP do computador em `apps/mobile/.env`.
 2. **API contra o Neon:** `npm run dev:api:neon` ainda não foi exercitada com cadastro (nenhum usuário foi gravado no banco compartilhado).
@@ -46,7 +60,7 @@ Data: 2026-10-09. Este arquivo resume onde o projeto parou para quem retomar o t
 
 ## Próximos passos
 
-1. **Etapa 3:** onboarding de preferências ("Como você quer usar o Freelah?"), preferências locais antes do login e na conta depois, configurações e abas por preferência (PRD seção 8). A tabela `UserPreference` e a regra de "ao menos uma opção" já existem no banco.
+1. **Etapa 3, próximas fatias:** (a) camada de armazenamento local com interface única e testes; (b) cliente do app e sincronização no primeiro login (conta sem preferências recebe as locais; conta com preferências prevalece; o onboarding só aparece sem preferências locais nem na conta); (c) tela de onboarding; (d) configurações; (e) abas por preferência com placeholders (PRD seções 8 e 30.3).
 2. **Etapa 4:** Home, Explorar, busca, filtros, detalhes públicos e identidade visual.
 3. Seguir o [roadmap](roadmap.md) até a etapa 10, sempre com funcionalidades completas (tela, API, persistência, autorização e testes), como pede o PRD.
 

@@ -9,9 +9,22 @@ import type { HealthResponse } from "@freelah/shared";
 import { toNodeHandler } from "better-auth/node";
 import type { Auth } from "./auth";
 import type { Config } from "./config";
+import type { PrismaClient } from "./db";
 import { createMeRouter } from "./routes/me";
+import { createPreferencesRouter } from "./routes/preferences";
 
-export function createApp(config: Pick<Config, "CORS_ORIGINS">, auth?: Auth): Express {
+// Com autenticação, o banco é obrigatório: assim nenhuma rota que depende dele some em silêncio.
+export function createApp(config: Pick<Config, "CORS_ORIGINS">): Express;
+export function createApp(
+  config: Pick<Config, "CORS_ORIGINS">,
+  auth: Auth,
+  prisma: PrismaClient,
+): Express;
+export function createApp(
+  config: Pick<Config, "CORS_ORIGINS">,
+  auth?: Auth,
+  prisma?: PrismaClient,
+): Express {
   const app = express();
 
   app.disable("x-powered-by");
@@ -31,6 +44,7 @@ export function createApp(config: Pick<Config, "CORS_ORIGINS">, auth?: Auth): Ex
   });
 
   if (auth) app.use(createMeRouter(auth));
+  if (auth && prisma) app.use(createPreferencesRouter(auth, prisma));
 
   const notFound: RequestHandler = (_req, res) => {
     res.status(404).json({ error: "not_found", message: "Rota não encontrada." });

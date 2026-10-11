@@ -9,7 +9,7 @@ Referência: PRD v2.0. Este arquivo registra o andamento, as simplificações ad
 | 0 | Monorepo, app Expo, API `/health`, pacote compartilhado, lint, documentação | 1 | Concluída |
 | 1 | Prisma 7 + Neon: tabelas, migração, seed de categorias | 1 | Concluída (migração e seed aplicados no Neon `production` e no banco local; 46 testes passando) |
 | 2 | Better Auth: cadastro (com declaração 18+), login, logout, sessão nas 3 plataformas | 1 | Concluída na API e na Web; falta conferir a sessão no celular (Expo Go) |
-| 3 | Onboarding, preferências (local e na conta), configurações, abas por preferência | 2 | Pendente |
+| 3 | Onboarding, preferências (local e na conta), configurações, abas por preferência | 2 | **Em andamento**: contrato compartilhado e API de preferências (`GET`/`PUT /me/preferences`) implementados e verificados; pendentes onboarding, armazenamento local, sincronização no primeiro login, configurações e abas |
 | 4 | Home, Explorar, busca, filtros, detalhes (públicos), identidade visual | 2 | Pendente |
 | 5 | Publicar (revisão e rascunho), editar, cancelar, Minhas oportunidades, expiração | 3 | Pendente |
 | 6 | Interesse, lista de interessados, Meus interesses | 4 | Pendente |
@@ -60,6 +60,20 @@ Referência: PRD v2.0. Este arquivo registra o andamento, as simplificações ad
 | Telemetria | Desligada, para funcionar offline e não enviar dados para fora |
 | Rota protegida | `requireAuth` + `GET /me`. As demais rotas protegidas (etapas seguintes) reutilizam o middleware |
 | Cookies entre domínios | Web e API em `localhost` (portas diferentes) são o mesmo site. No deploy, se ficarem em domínios diferentes, será preciso rever `SameSite`/`Secure` (etapa 10) |
+
+## Decisões das preferências (etapa 3)
+
+| Tema | Decisão |
+|---|---|
+| Contrato | `packages/shared/src/preferences.ts`: `updatePreferencesSchema` (estrito, ao menos uma opção) e `preferencesResponseSchema`, usados pela API e, depois, pelo app |
+| Rotas | `GET /me/preferences` devolve `{ preferences: null }` para conta que ainda não escolheu (sinal para mostrar o onboarding). `PUT /me/preferences` grava (upsert) só a linha do usuário da sessão |
+| Erros | `400 at_least_one_required` (duas opções desativadas) e `400 validation_error` (campo desconhecido, inclusive `userId`, tipo errado ou corpo ausente). Mensagens em português |
+| Segurança | O id do usuário vem sempre da sessão. Resposta com `Cache-Control: no-store`. A regra "ao menos uma opção" vale na API e no banco (CHECK) |
+| Preferências não são permissões | A rota só toca em `UserPreference`; testes provam que publicações, interesses, conversas, mensagens e perfil não mudam |
+| `createApp` | Com autenticação, o Prisma é obrigatório (sobrecargas de tipo): nenhuma rota que depende do banco some em silêncio |
+| Armazenamento local (a implementar) | `localStorage` na Web e `expo-secure-store` no celular, atrás de uma interface única e sem dependência nova (o SecureStore não funciona na Web) |
+| Primeiro login (a implementar) | Conta sem preferências recebe as locais; conta com preferências prevalece sobre as locais. O onboarding só aparece sem preferências locais nem na conta |
+| Navegação (a implementar) | Telas ainda inexistentes aparecem como placeholders "Em breve", sem simular funcionalidade pronta |
 
 ## Fora do escopo do protótipo (PRD seção 35)
 

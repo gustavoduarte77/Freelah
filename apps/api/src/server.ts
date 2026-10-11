@@ -6,7 +6,7 @@ import { createPrisma } from "./db";
 const config = loadConfig();
 const prisma = createPrisma(config.DATABASE_URL);
 const auth = createAuth(config, prisma);
-const app = createApp(config, auth);
+const app = createApp(config, auth, prisma);
 
 // Escuta em todas as interfaces para que o Expo Go (celular na mesma rede) consiga acessar.
 const server = app.listen(config.PORT, "0.0.0.0", () => {
