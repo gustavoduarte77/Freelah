@@ -1,3 +1,4 @@
+import type { PreferencesSyncState } from "@freelah/shared";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -12,11 +13,56 @@ import { Button } from "../src/components/ui";
 import { API_URL } from "../src/lib/api";
 import { authClient } from "../src/lib/auth-client";
 import { useApiHealth } from "../src/features/health/useApiHealth";
+import {
+  preferencesScreenFor,
+  usePreferencesSync,
+} from "../src/features/preferences/PreferencesSyncProvider";
+import {
+  InvalidLocalRecovery,
+  LocalStorageError,
+  OnboardingScreen,
+  PreferencesLoading,
+} from "../src/features/preferences/PreferencesScreen";
+
+// TEMPORÁRIO (junto com a linha de status das preferências abaixo).
+function describePreferencesSync(state: PreferencesSyncState): string {
+  switch (state.status) {
+    case "signed_out":
+      return "sem sessão";
+    case "syncing":
+      return "sincronizando…";
+    case "synced":
+      return `sincronizadas (trabalhar: ${state.preferences.wantsWork ? "sim" : "não"}, contratar: ${state.preferences.wantsToHire ? "sim" : "não"})`;
+    case "needs_onboarding":
+      return "aguardando onboarding";
+    case "error": {
+      const where = state.error.source === "account" ? "conta" : "este aparelho";
+      const saved = state.error.source === "device" && state.accountPreferences !== null;
+      return `erro (${where}: ${state.error.kind}) — ${
+        saved ? "as preferências foram salvas na conta, mas a gravação neste aparelho falhou. " : ""
+      }${state.error.message}`;
+    }
+    case "visitor_loading":
+      return "lendo as preferências deste aparelho…";
+    case "visitor_ready":
+      return `escolha deste aparelho (trabalhar: ${state.preferences.wantsWork ? "sim" : "não"}, contratar: ${state.preferences.wantsToHire ? "sim" : "não"}) — ainda não está em nenhuma conta`;
+    case "visitor_needs_onboarding":
+      return "aguardando onboarding";
+    case "visitor_error":
+      return `erro (este aparelho: ${state.error.kind}) — ${state.error.message}`;
+  }
+}
 
 export default function Index() {
   const { state, retry } = useApiHealth();
   const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
+  const {
+    state: prefsState,
+    retry: retryPrefs,
+    complete,
+    resolveInvalidLocal,
+  } = usePreferencesSync();
   const [signingOut, setSigningOut] = useState(false);
 
   async function signOut() {
@@ -26,6 +72,36 @@ export default function Index() {
     } finally {
       setSigningOut(false);
     }
+  }
+
+  // Onboarding, recuperação e carregamento das preferências substituem só o conteúdo desta tela.
+  const screen = preferencesScreenFor(prefsState, !isPending && !session);
+  if (screen === "loading") return <PreferencesLoading />;
+  if (screen === "onboarding" && (prefsState.status === "needs_onboarding" || prefsState.status === "visitor_needs_onboarding")) {
+    return (
+      <OnboardingScreen
+        saving={prefsState.saving}
+        saveError={prefsState.saveError}
+        signedIn={prefsState.status === "needs_onboarding"}
+        onSubmit={(preferences) => void complete(preferences)}
+        onSignIn={() => router.push("/entrar")}
+        onSignOut={signOut}
+      />
+    );
+  }
+  if (screen === "invalid_local" && (prefsState.status === "error" || prefsState.status === "visitor_error")) {
+    return (
+      <InvalidLocalRecovery
+        accountPreferences={prefsState.status === "error" ? prefsState.accountPreferences : null}
+        busy={prefsState.busy}
+        actionError={prefsState.actionError}
+        onUseAccount={() => void resolveInvalidLocal("use_account")}
+        onDiscard={() => void resolveInvalidLocal("discard")}
+      />
+    );
+  }
+  if (screen === "local_error" && prefsState.status === "visitor_error") {
+    return <LocalStorageError error={prefsState.error} busy={prefsState.busy} onRetry={retryPrefs} />;
   }
 
   return (
@@ -55,6 +131,18 @@ export default function Index() {
                 onPress={() => router.push("/cadastrar")}
               />
             </>
+          )}
+        </View>
+
+        {/* TEMPORÁRIO: status das preferências (visitante ou com sessão). Remover quando esta
+            tela provisória for substituída (Etapa 4). */}
+        <View style={styles.statusBox} accessibilityLiveRegion="polite" testID="preferences-sync-status">
+          <Text style={styles.statusLabel}>Preferências (temporário)</Text>
+          <Text style={styles.hint}>{describePreferencesSync(prefsState)}</Text>
+          {prefsState.status === "error" && (
+            <Pressable onPress={retryPrefs} style={styles.button} accessibilityRole="button">
+              <Text style={styles.buttonText}>Tentar sincronizar de novo</Text>
+            </Pressable>
           )}
         </View>
 

@@ -70,18 +70,26 @@ interface ButtonProps {
   title: string;
   onPress: () => void;
   loading?: boolean;
+  disabled?: boolean;
   variant?: "primary" | "link";
 }
 
-export function Button({ title, onPress, loading = false, variant = "primary" }: ButtonProps) {
+export function Button({
+  title,
+  onPress,
+  loading = false,
+  disabled = false,
+  variant = "primary",
+}: ButtonProps) {
   const isLink = variant === "link";
+  const inactive = loading || disabled;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled: loading, busy: loading }}
-      disabled={loading}
+      accessibilityState={{ disabled: inactive, busy: loading }}
+      disabled={inactive}
       onPress={onPress}
-      style={[isLink ? styles.link : styles.button, loading ? styles.disabled : null]}
+      style={[isLink ? styles.link : styles.button, inactive ? styles.disabled : null]}
     >
       {loading ? (
         <ActivityIndicator color={isLink ? colors.brand : "#FFFFFF"} />

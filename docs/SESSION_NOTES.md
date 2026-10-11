@@ -1,6 +1,6 @@
 # Notas de sessão
 
-Checkpoint das etapas 1 e 2 em 2026-10-09; atualizado em 2026-10-11 com o início da etapa 3. Este arquivo resume onde o projeto parou para quem retomar o trabalho. Os requisitos continuam no [PRD](PRD.md), o andamento por etapa em [roadmap.md](roadmap.md) e as instruções de instalação no [README](../README.md). Não há credenciais aqui.
+Checkpoint das etapas 1 e 2 em 2026-10-09; atualizado em 2026-10-11 com a etapa 3 em andamento. Este arquivo resume onde o projeto parou para quem retomar o trabalho. Os requisitos continuam no [PRD](PRD.md), o andamento por etapa em [roadmap.md](roadmap.md) e as instruções de instalação no [README](../README.md). Não há credenciais aqui.
 
 ## Estado atual
 
@@ -22,14 +22,21 @@ Checkpoint das etapas 1 e 2 em 2026-10-09; atualizado em 2026-10-11 com o iníci
 - O telefone é privado: só aparece no `GET /me`, para o dono da conta.
 - Sem verificação de e-mail e sem recuperação de senha (não há provedor de e-mail).
 
-**Preferências de uso (etapa 3: backend e armazenamento local)**
+**Preferências de uso (etapa 3: backend, armazenamento local e sincronização)**
 - Contrato em `packages/shared/src/preferences.ts` e rotas em `apps/api/src/routes/preferences.ts`: `GET /me/preferences` (devolve `{ preferences: null }` se a conta ainda não escolheu) e `PUT /me/preferences` (grava só as preferências do usuário da sessão).
 - Rejeita com 400 as duas opções desativadas (`at_least_one_required`) e campos desconhecidos, inclusive `userId` (`validation_error`). Mensagens em português; resposta com `Cache-Control: no-store`.
 - Preferências não são permissões: a rota só toca em `UserPreference` e os testes provam que publicações, interesses, conversas e perfil não mudam.
 - `createApp` exige o Prisma sempre que recebe a autenticação (sobrecargas de tipo), para que a rota nunca fique indisponível em silêncio.
 - **Armazenamento local** (`packages/shared/src/preferences-storage.ts`): interface `LocalPreferencesStore` (`read`, `save`, `clear`) sobre `localStorage` (Web) e `expo-secure-store` (celular), sem dependência nova. A lógica e os adaptadores ficam em `shared` e recebem as dependências por parâmetro; `apps/mobile/src/features/preferences/localPreferences.ts` só escolhe o backend real por `Platform.OS`. Grava o JSON do contrato na chave `freelah.preferences` e não toca nas chaves do Better Auth.
 - Erros explícitos: `read` devolve `null` só se nada foi gravado; dado inválido lança `invalid_data` e **não é apagado automaticamente**; falhas lançam `unavailable`, `read_failed` ou `write_failed`. `save` valida antes de acessar o armazenamento e rejeita se a gravação falhar.
-- **Ainda não é usada por nenhuma tela**: a integração vem com a sincronização e o onboarding.
+- **Sincronização com a conta** (feita): `preferences-api.ts` (cliente de `GET`/`PUT /me/preferences` com `fetch` injetado; erros `network`, `unauthorized`, `server`, `rejected`, `invalid_response`, nunca `null`) e `preferences-sync.ts` (`syncPreferences` e o controlador com estado, compatível com `useSyncExternalStore`), ambos em `packages/shared`. No app: `preferencesApi.ts` (fetch real: `credentials: "include"` na Web; no celular `Cookie` de `authClient.getCookie()` com `credentials: "omit"`; prazo de 8 s), `preferencesSync.ts` (controlador único) e `PreferencesSyncProvider.tsx` (envolve o `Stack` em `_layout.tsx` e liga a sessão ao controlador; `usePreferencesSync()`).
+- Regras: o `GET` da conta vem primeiro (se falhar, nada local muda). Conta com preferências prevalece e atualiza o local; conta sem preferências e local válido: `PUT` com o local; nada em lugar nenhum: estado `needs_onboarding`. Falha de rede/API nunca vira `needs_onboarding` nem sobrescreve a conta. Só é "sincronizado" depois de todas as operações terminarem.
+- Dado local inválido ou ilegível: estado `error` (origem "este aparelho"), nada é apagado nem enviado; se a conta tinha preferências, elas vêm anexadas ao erro (`accountPreferences`). Falha ao gravar o local: `error` `write_failed`, também com as da conta.
+- Logout/sessão expirada (só com sessão resolvida e sem erro; carregando não conta): a cópia local é apagada **somente se a sincronização daquele usuário tinha terminado com sucesso**; senão é preservada. Se o apagamento falhar, o próximo usuário não herda nem envia nada (erro até conseguir apagar). Execuções atrasadas de uma sessão anterior são ignoradas e as execuções são enfileiradas (a nova espera a anterior; no máximo o prazo de 8 s).
+- **Onboarding** (feito): `PreferencesScreen.tsx` (`OnboardingScreen`, `InvalidLocalRecovery`, `LocalStorageError`, `PreferencesLoading`) e `preferencesScreenFor()` em `PreferencesSyncProvider.tsx`. As telas substituem **somente o conteúdo da tela inicial `/`** (`/entrar` e `/cadastrar` continuam acessíveis; o onboarding do visitante tem o atalho "Já tenho conta — Entrar" e o de quem tem sessão tem "Sair"). Pergunta "Como você quer usar o Freelah?", duas opções independentes ("Encontrar trabalho", "Contratar alguém"), "Continuar" desabilitado sem seleção (PRD 8.1).
+- Controlador estendido: modo **visitante** (`startVisitor()`: só lê o armazenamento local, nunca chama a API; estados `visitor_loading`, `visitor_ready`, `visitor_needs_onboarding`, `visitor_error`), `complete(preferences)` (visitante: grava só no local, sem conta anônima; com sessão: `PUT` e depois grava no local, só então `synced`; chamada duplicada ignorada) e `resolveInvalidLocal("use_account" | "discard")` (sempre por ação explícita; "descartar" pede confirmação que explica a consequência). Se o `PUT` der certo e a gravação local falhar, o estado é `error` com as preferências já salvas e a tela inicial diz que foram salvas na conta mas não neste aparelho. Todas as operações passam por uma fila, e resultados atrasados, logout e troca de usuário seguem as mesmas proteções da sincronização.
+- Tela inicial provisória: linha temporária "Preferências (temporário)" agora também para visitantes (mostra a escolha deste aparelho), com o status e o botão "Tentar sincronizar de novo". **Remover quando a tela for substituída (etapa 4).**
+- **Limitação aceita (MVP):** corrida entre dois aparelhos no primeiro login (`GET` sem preferências, outro aparelho grava, nosso `PUT` sobrescreve). Evitá-la exigiria "criar só se não existir" no backend.
 
 **Ambientes de banco** (mesmo schema e mesmas migrações; a `DATABASE_URL` escolhe o banco)
 - Local (padrão, funciona sem internet): `npm run db:local -w @freelah/api` (PostgreSQL 17 embutido no `node_modules`).
@@ -40,7 +47,9 @@ Checkpoint das etapas 1 e 2 em 2026-10-09; atualizado em 2026-10-11 com o iníci
 
 - Lint e typecheck sem erros.
 - API: 6 arquivos, 79 testes passando (integração com banco real: cadastro, 18+, duplicidade, sessão, CSRF, regras do banco e as 18 de preferências: autenticação, leitura, gravação, persistência após sair e entrar, gravações simultâneas, validação, isolamento entre usuários e dados que não mudam).
-- Pacote compartilhado: 4 arquivos, 76 testes passando (9 do contrato de preferências e 51 do armazenamento local: leitura, ida e volta, remoção, dados inválidos, falhas, comportamento da Web e do SecureStore e isolamento das chaves). Três defeitos introduzidos de propósito no módulo foram detectados pelos testes.
+- Pacote compartilhado: 6 arquivos, 162 testes passando (9 do contrato, 51 do armazenamento local, 20 do cliente da API e 66 da sincronização e do onboarding: conta com preferências e local divergente, conta sem preferências, ausência em ambos, falhas de rede/API/PUT, local inválido ou ilegível, falha ao gravar o local, cancelamento, repetição, logout, troca de usuário e falha ao apagar a cópia). Defeitos introduzidos de propósito (erro tratado como "sem preferências", sem apagar no logout, sobrescrever dado inválido, ignorar cancelamento, ignorar a limpeza) foram detectados pelos testes.
+- Onboarding no Chromium (Playwright temporário fora do projeto) contra a API real e o banco local: 65 checagens passando — visitante (pergunta e texto do PRD, "Continuar" desabilitado, cada opção e ambas, nenhuma requisição à API, persistência após recarregar), visitante que depois entra (conta com preferências prevalece; conta sem preferências recebe a local), logado sem nada (onboarding, duplo clique = um `PUT`, recarregar sem onboarding), `PUT` com erro 500 e nova tentativa, `PUT` salvo com gravação local falhando, rede caída (erro, não onboarding), dado local inválido (visitante e logado, com e sem preferências na conta: nada apagado sozinho, confirmação, cancelar, usar as da conta, descartar), `localStorage` bloqueado, troca de usuário, "Sair" e o atalho para `/entrar`. 22 contas de teste criadas e removidas (0 restantes). A checagem encontrou um defeito real, corrigido: `accessibilityState.checked` não gerava `aria-checked` na Web (acrescentado `aria-checked`). Cinco defeitos introduzidos de propósito no controlador foram detectados pelos testes unitários.
+- Sincronização integrada no Chromium (Playwright temporário fora do projeto) contra a API real e o banco local, com contas de teste criadas e removidas depois (11 contas, 0 restantes): 37 checagens passando — conta com preferências + local divergente (só `GET`, local atualizado), conta sem preferências + local válido (`GET`, `PUT`), nada em lugar nenhum, rede derrubada (erro, local preservado, conta intacta, "tentar de novo" conclui), `GET` e `PUT` com 500, dado inválido (com e sem preferências na conta, sem apagar nem enviar), falha ao gravar o local, recarregar (um `GET`), logout (apaga só se sincronizado), troca de usuário (B não herda as de A) e visitante sem requisições. Os bundles Web, iOS e Android compilam no Metro.
 - Armazenamento local compilado pelo Metro para Web, iOS e Android (HTTP 200 nos três bundles) e executado de verdade no Chromium (script temporário fora do projeto): 18 passos passando (JSON exato no `localStorage`, persistência após recarregar, dado corrompido sem virar `null` nem ser apagado, cota estourada, `localStorage` bloqueado e chaves de outras partes intactas).
 - Verificação manual das rotas de preferências por HTTP contra a API real e o banco local (401, `null`, gravação, os dois erros 400 e o cabeçalho), com limpeza dos dados de teste.
 - Interface na Web (Chromium via Playwright, script temporário fora do projeto): 14 passos passando (cadastro, validações, sessão após recarregar, sair, login e erros em português).
@@ -48,13 +57,15 @@ Checkpoint das etapas 1 e 2 em 2026-10-09; atualizado em 2026-10-11 com o iníci
 
 ## Pendências
 
-**Etapa 3 (ainda não feito):** sincronização no primeiro login, tela de onboarding, configurações ("Preferências de uso"), abas por preferência com placeholders "Em breve" e o cliente do app para as rotas.
+**Etapa 3 (ainda não feito):** configurações ("Preferências de uso") e abas por preferência com placeholders "Em breve".
 
 **Limitações ainda não verificadas na etapa 3:**
-- A API de preferências não foi exercitada contra o Neon (só contra o banco local) e nenhuma tela do app consome as rotas ainda.
-- **O SecureStore real não foi testado em aparelho nem no Expo Go.** O caminho do celular foi verificado apenas com fakes nos testes unitários e pela compilação dos bundles iOS e Android; o runtime nativo só poderá ser conferido quando uma tela usar o armazenamento.
+- A API e a sincronização de preferências não foram exercitadas contra o Neon (só contra o banco local).
+- A sincronização só foi executada na Web (Chromium). No celular (cookie manual + SecureStore) só há compilação dos bundles e testes com fakes; falta conferir no Expo Go.
+- **O SecureStore real não foi testado em aparelho nem no Expo Go.** O caminho do celular foi verificado apenas com fakes nos testes unitários e pela compilação dos bundles iOS e Android; o runtime nativo só poderá ser conferido no Expo Go.
 - **iOS:** o SecureStore usa o Keychain, que pode sobreviver à desinstalação do app. Uma preferência antiga pode reaparecer depois de reinstalar. O onboarding deve considerar isso (por exemplo, tratar preferência local antiga ao sincronizar com a conta).
-- Dado inválido guardado no aparelho (`invalid_data`) não é apagado automaticamente: o onboarding/sincronização precisa decidir explicitamente quando chamar `clear()`.
+- Dado inválido guardado no aparelho (`invalid_data`) nunca é apagado automaticamente: só por ação explícita na tela de recuperação.
+- Onboarding só foi executado na Web (Chromium). No celular há compilação dos bundles e testes com fakes; falta conferir no Expo Go (incluindo o SecureStore e o cookie manual).
 
 **Pendências gerais:**
 
@@ -68,7 +79,7 @@ Checkpoint das etapas 1 e 2 em 2026-10-09; atualizado em 2026-10-11 com o iníci
 
 ## Próximos passos
 
-1. **Etapa 3, próximas fatias:** (a) cliente do app para as rotas e sincronização no primeiro login (conta sem preferências recebe as locais; conta com preferências prevalece; o onboarding só aparece sem preferências locais nem na conta); (b) tela de onboarding; (c) configurações; (d) abas por preferência com placeholders (PRD seções 8 e 30.3).
+1. **Etapa 3, próximas fatias:** (c) configurações (alterar preferências, PRD 8.5; reaproveitar `complete`); (d) abas por preferência com placeholders (PRD seções 8 e 30.3).
 2. **Etapa 4:** Home, Explorar, busca, filtros, detalhes públicos e identidade visual.
 3. Seguir o [roadmap](roadmap.md) até a etapa 10, sempre com funcionalidades completas (tela, API, persistência, autorização e testes), como pede o PRD.
 
