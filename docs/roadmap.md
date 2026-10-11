@@ -9,7 +9,7 @@ Referência: PRD v2.0. Este arquivo registra o andamento, as simplificações ad
 | 0 | Monorepo, app Expo, API `/health`, pacote compartilhado, lint, documentação | 1 | Concluída |
 | 1 | Prisma 7 + Neon: tabelas, migração, seed de categorias | 1 | Concluída (migração e seed aplicados no Neon `production` e no banco local; 46 testes passando) |
 | 2 | Better Auth: cadastro (com declaração 18+), login, logout, sessão nas 3 plataformas | 1 | Concluída na API e na Web; falta conferir a sessão no celular (Expo Go) |
-| 3 | Onboarding, preferências (local e na conta), configurações, abas por preferência | 2 | **Em andamento**: contrato compartilhado e API de preferências (`GET`/`PUT /me/preferences`) implementados e verificados; pendentes onboarding, armazenamento local, sincronização no primeiro login, configurações e abas |
+| 3 | Onboarding, preferências (local e na conta), configurações, abas por preferência | 2 | **Em andamento**: contrato compartilhado, API de preferências (`GET`/`PUT /me/preferences`) e camada de armazenamento local implementados e verificados; pendentes sincronização no primeiro login, onboarding, configurações e abas |
 | 4 | Home, Explorar, busca, filtros, detalhes (públicos), identidade visual | 2 | Pendente |
 | 5 | Publicar (revisão e rascunho), editar, cancelar, Minhas oportunidades, expiração | 3 | Pendente |
 | 6 | Interesse, lista de interessados, Meus interesses | 4 | Pendente |
@@ -71,7 +71,9 @@ Referência: PRD v2.0. Este arquivo registra o andamento, as simplificações ad
 | Segurança | O id do usuário vem sempre da sessão. Resposta com `Cache-Control: no-store`. A regra "ao menos uma opção" vale na API e no banco (CHECK) |
 | Preferências não são permissões | A rota só toca em `UserPreference`; testes provam que publicações, interesses, conversas, mensagens e perfil não mudam |
 | `createApp` | Com autenticação, o Prisma é obrigatório (sobrecargas de tipo): nenhuma rota que depende do banco some em silêncio |
-| Armazenamento local (a implementar) | `localStorage` na Web e `expo-secure-store` no celular, atrás de uma interface única e sem dependência nova (o SecureStore não funciona na Web) |
+| Armazenamento local | Implementado em `packages/shared/src/preferences-storage.ts` (interface `LocalPreferencesStore`: `read`, `save`, `clear`), com `localStorage` na Web e `expo-secure-store` no celular, sem dependência nova. A lógica e os adaptadores ficam em `shared` e recebem `localStorage`/SecureStore por parâmetro (testáveis sem React Native); `apps/mobile/src/features/preferences/localPreferences.ts` só escolhe o armazenamento real por `Platform.OS`. Guarda o JSON exato do contrato na chave `freelah.preferences`, a única que o módulo toca (as do Better Auth ficam intactas) |
+| Erros de armazenamento | `null` só significa "nada gravado". Dado inválido gera `invalid_data` e **não é apagado sozinho**; falhas geram `unavailable`, `read_failed` ou `write_failed`, nunca `null`. `save` valida antes de tocar no armazenamento e não parece bem-sucedido se falhar |
+| Limitação no iOS | O SecureStore usa o Keychain, que pode sobreviver à desinstalação do app: uma preferência antiga pode reaparecer após reinstalar. O onboarding precisa considerar isso |
 | Primeiro login (a implementar) | Conta sem preferências recebe as locais; conta com preferências prevalece sobre as locais. O onboarding só aparece sem preferências locais nem na conta |
 | Navegação (a implementar) | Telas ainda inexistentes aparecem como placeholders "Em breve", sem simular funcionalidade pronta |
 
