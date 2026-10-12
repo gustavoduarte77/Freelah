@@ -12,6 +12,7 @@ import type { Config } from "./config";
 import type { PrismaClient } from "./db";
 import { createJobsRouter } from "./routes/jobs";
 import { createMeRouter } from "./routes/me";
+import { createMyJobsRouter } from "./routes/my-jobs";
 import { createPreferencesRouter } from "./routes/preferences";
 
 // Com autenticação, o banco é obrigatório: assim nenhuma rota que depende dele some em silêncio.
@@ -46,6 +47,7 @@ export function createApp(
 
   if (auth) app.use(createMeRouter(auth));
   if (auth && prisma) app.use(createPreferencesRouter(auth, prisma));
+  if (auth && prisma) app.use(createMyJobsRouter(auth, prisma));
   // Categorias e oportunidades são públicas (PRD 9): não dependem de sessão.
   if (prisma) app.use(createJobsRouter(prisma));
 
@@ -55,6 +57,12 @@ export function createApp(
   app.use(notFound);
 
   const onError: ErrorRequestHandler = (err, _req, res, _next) => {
+    // Corpo malformado ou grande demais é erro de quem enviou (4xx), não falha do servidor.
+    const status = (err as { status?: unknown }).status;
+    if (status === 400 || status === 413) {
+      res.status(status).json({ error: "bad_request", message: "Não foi possível ler os dados enviados." });
+      return;
+    }
     console.error(err);
     res
       .status(500)
