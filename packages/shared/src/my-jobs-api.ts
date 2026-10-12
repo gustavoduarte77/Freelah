@@ -3,11 +3,12 @@ import {
   ownJobResponseSchema,
   ownJobsResponseSchema,
   type createJobSchema,
+  type updateJobSchema,
   type OwnJob,
 } from "./jobs-write";
 import type { HttpResponseLike } from "./preferences-api";
 
-// Cliente das rotas privadas `/me/jobs` (criar, listar, ler e publicar as próprias oportunidades).
+// Cliente das rotas privadas `/me/jobs` (criar, listar, ler, editar, publicar e cancelar as próprias oportunidades).
 // Recebe o `fetch` já autenticado por parâmetro, então roda e é testado sem React nem rede.
 
 export type MyJobsApiErrorKind =
@@ -69,7 +70,7 @@ export class MyJobsApiError extends Error {
   }
 }
 
-export type MyJobsMethod = "GET" | "POST";
+export type MyJobsMethod = "GET" | "POST" | "PATCH";
 
 /** `fetch` já autenticado (cookie/credenciais) fornecido pelo app. */
 export type MyJobsFetch = (
@@ -80,6 +81,9 @@ export type MyJobsFetch = (
 /** Corpo aceito por `POST /me/jobs` (antes da normalização feita pela API). */
 export type CreateJobRequest = z.input<typeof createJobSchema>;
 
+/** Campos que mudam em `PATCH /me/jobs/:id` (só os enviados são alterados). */
+export type UpdateJobRequest = z.input<typeof updateJobSchema>;
+
 export interface MyJobsApi {
   /** Cria como rascunho, ou já publicada com `publish: true`. */
   create(request: CreateJobRequest, options?: { publish?: boolean }): Promise<OwnJob>;
@@ -87,6 +91,13 @@ export interface MyJobsApi {
   get(id: string): Promise<OwnJob>;
   /** Publica um rascunho. */
   publish(id: string): Promise<OwnJob>;
+  /**
+   * Edita só os campos de `changes`. `expectedUpdatedAt` é a versão que a pessoa estava vendo: se a
+   * oportunidade mudou desde então, a API recusa (conflict) em vez de misturar as edições.
+   */
+  update(id: string, changes: UpdateJobRequest, expectedUpdatedAt: string): Promise<OwnJob>;
+  /** Cancela a própria oportunidade (rascunho, publicada ou em negociação). */
+  cancel(id: string): Promise<OwnJob>;
 }
 
 const errorBodySchema = z.object({
@@ -176,6 +187,12 @@ export function createMyJobsApi(options: { baseUrl: string; fetch: MyJobsFetch }
     },
     publish(id) {
       return call("POST", `/${encodeURIComponent(id)}/publish`, {}, one);
+    },
+    update(id, changes, expectedUpdatedAt) {
+      return call("PATCH", `/${encodeURIComponent(id)}`, { ...changes, expectedUpdatedAt }, one);
+    },
+    cancel(id) {
+      return call("POST", `/${encodeURIComponent(id)}/cancel`, {}, one);
     },
   };
 }

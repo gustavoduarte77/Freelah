@@ -1,6 +1,13 @@
-import { createJobSchema, jobFieldErrors, serviceInstant, validateJobSchedule, JOB_DEADLINE_MAX_DAYS } from "./jobs-write";
+import {
+  createJobSchema,
+  jobFieldErrors,
+  serviceInstant,
+  validateJobSchedule,
+  JOB_DEADLINE_MAX_DAYS,
+  type OwnJob,
+} from "./jobs-write";
 import { parseReaisToCents } from "./jobs";
-import type { CreateJobRequest } from "./my-jobs-api";
+import type { CreateJobRequest, UpdateJobRequest } from "./my-jobs-api";
 
 // Lógica do formulário de publicação (sem React): máscaras, leitura de data e hora digitadas,
 // cálculo do prazo e conversão do que a pessoa digitou no corpo da API (e dos erros da API de
@@ -319,4 +326,71 @@ export const JOB_FORM_FIELD_ORDER: readonly JobFormField[] = [
 
 export function firstErrorField(errors: JobFormErrors): JobFormField | null {
   return JOB_FORM_FIELD_ORDER.find((field) => errors[field] !== undefined) ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Edição: da oportunidade para o formulário, e do formulário para só o que mudou
+// ---------------------------------------------------------------------------
+
+/** 15000 => "150,00" (como a pessoa digita; sem separador de milhar). */
+export function centsToReaisInput(cents: number): string {
+  return `${Math.floor(cents / 100)},${pad(cents % 100)}`;
+}
+
+/** Valores do formulário a partir da oportunidade como a API a devolveu (para abrir a edição). */
+export function jobToFormValues(job: OwnJob): JobFormValues {
+  return {
+    title: job.title,
+    description: job.description,
+    additionalInfo: job.additionalInfo ?? "",
+    categoryId: job.category.id,
+    city: job.city,
+    state: job.state,
+    scheduledDate: formatBrDate(job.scheduledDate),
+    startTime: job.startTime,
+    price: centsToReaisInput(job.proposedPriceCents),
+    negotiable: job.negotiable,
+    deadlineDate: formatBrDate(brasiliaDay(new Date(job.expiresAt))),
+  };
+}
+
+export type BuildUpdateResult =
+  | {
+      ok: true;
+      /** Só os campos que mudaram em relação à oportunidade aberta (vazio = nada mudou). */
+      changes: UpdateJobRequest;
+      changedFields: string[];
+    }
+  | { ok: false; errors: JobFormErrors };
+
+/**
+ * Valida o formulário com as mesmas regras da criação e devolve SÓ o que mudou em relação a
+ * `original`, para uma edição nunca sobrescrever campos que a pessoa não tocou. O prazo só vai
+ * junto se ela mexeu no prazo, na data ou no horário do serviço.
+ */
+export function buildUpdateJobRequest(values: JobFormValues, original: OwnJob, now: Date): BuildUpdateResult {
+  const built = buildCreateJobRequest(values, now);
+  if (!built.ok) return { ok: false, errors: built.errors };
+
+  const before = jobToFormValues(original);
+  const calendarTouched =
+    values.deadlineDate.trim() !== before.deadlineDate ||
+    values.scheduledDate.trim() !== before.scheduledDate ||
+    values.startTime.trim() !== before.startTime;
+
+  const next = built.request;
+  const changes: Record<string, unknown> = {};
+  if (next.title !== original.title) changes.title = next.title;
+  if (next.description !== original.description) changes.description = next.description;
+  if ((next.additionalInfo ?? null) !== original.additionalInfo) changes.additionalInfo = next.additionalInfo ?? null;
+  if (next.categoryId !== original.category.id) changes.categoryId = next.categoryId;
+  if (next.city !== original.city) changes.city = next.city;
+  if (next.state !== original.state) changes.state = next.state;
+  if (next.scheduledDate !== original.scheduledDate) changes.scheduledDate = next.scheduledDate;
+  if (next.startTime !== original.startTime) changes.startTime = next.startTime;
+  if (next.proposedPriceCents !== original.proposedPriceCents) changes.proposedPriceCents = next.proposedPriceCents;
+  if ((next.negotiable ?? false) !== original.negotiable) changes.negotiable = next.negotiable ?? false;
+  if (calendarTouched && Date.parse(next.expiresAt) !== Date.parse(original.expiresAt)) changes.expiresAt = next.expiresAt;
+
+  return { ok: true, changes: changes as UpdateJobRequest, changedFields: Object.keys(changes) };
 }

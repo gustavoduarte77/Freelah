@@ -1,6 +1,6 @@
 import type { MyJobsApiError, OwnJob } from "@freelah/shared";
-import { Stack, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { Stack, useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, colors } from "../src/components/ui";
@@ -78,6 +78,18 @@ function MyJobsList({ userId }: { userId: string }) {
     }
   }, []);
 
+  // Ao voltar de outra tela (por exemplo, depois de editar), atualiza a lista; se falhar, mantém a que está na tela.
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      void load();
+    }, [load]),
+  );
+
   // Carrega ao abrir (e de novo se outra conta entrar). Resposta atrasada de uma tela já fechada é ignorada.
   useEffect(() => {
     let active = true;
@@ -98,7 +110,7 @@ function MyJobsList({ userId }: { userId: string }) {
 
   /**
    * A API confirmou (ao publicar ou ao conferir): só então a lista muda, e só o cartão em questão,
-   * com o registro devolvido por ela. Se agora está publicada, as listas públicas se atualizam.
+   * com o registro devolvido por ela. Se agora está publicada ou cancelada, as listas públicas se atualizam.
    */
   function handleJobUpdated(updated: OwnJob) {
     setState((current) =>
@@ -106,7 +118,7 @@ function MyJobsList({ userId }: { userId: string }) {
         ? { ...current, jobs: current.jobs.map((job) => (job.id === updated.id ? updated : job)) }
         : current,
     );
-    if (updated.status === "PUBLISHED" || updated.status === "NEGOTIATING") {
+    if (updated.status === "PUBLISHED" || updated.status === "NEGOTIATING" || updated.status === "CANCELLED") {
       homeJobsController.refresh();
       exploreJobsController.refresh();
     }

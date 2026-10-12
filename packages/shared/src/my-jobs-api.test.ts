@@ -109,6 +109,43 @@ describe("createMyJobsApi: pedidos", () => {
     expect(fetch.mock.calls[0]![1].method).toBe("POST");
   });
 
+  it("cancel faz POST /me/jobs/:id/cancel e devolve o registro da API", async () => {
+    const { api, fetch } = setup(json(200, { job: { ...job, status: "CANCELLED", canCancel: false } }));
+    expect((await api.cancel(ID)).status).toBe("CANCELLED");
+    expect(fetch.mock.calls[0]![0]).toBe(`http://api.test/me/jobs/${ID}/cancel`);
+    expect(fetch.mock.calls[0]![1].method).toBe("POST");
+  });
+
+  it("cancel: falha de rede é resultado desconhecido; 409 não é", async () => {
+    const network = await caught(setup(new Error("offline")).api.cancel(ID));
+    expect(network.kind).toBe("network");
+    expect(network.outcomeUnknown).toBe(true);
+    const invalid = await caught(setup(json(409, { error: "invalid_state", message: "Já cancelada." })).api.cancel(ID));
+    expect(invalid.kind).toBe("invalid_state");
+    expect(invalid.outcomeUnknown).toBe(false);
+  });
+
+  it("update faz PATCH só com as mudanças e a versão que a pessoa viu", async () => {
+    const { api, fetch } = setup(json(200, { job: { ...job, title: "Novo" } }));
+    expect((await api.update(ID, { title: "Novo" }, job.updatedAt)).title).toBe("Novo");
+    expect(fetch.mock.calls[0]![0]).toBe(`http://api.test/me/jobs/${ID}`);
+    expect(fetch.mock.calls[0]![1].method).toBe("PATCH");
+    expect(JSON.parse(fetch.mock.calls[0]![1].body!)).toEqual({ title: "Novo", expectedUpdatedAt: job.updatedAt });
+  });
+
+  it("update: rede é resultado desconhecido; 409 conflict e 400 por campo não são", async () => {
+    const network = await caught(setup(new Error("offline")).api.update(ID, { title: "Novo" }, job.updatedAt));
+    expect(network.outcomeUnknown).toBe(true);
+    const conflict = await caught(setup(json(409, { error: "conflict" })).api.update(ID, { title: "Novo" }, job.updatedAt));
+    expect(conflict.kind).toBe("conflict");
+    expect(conflict.outcomeUnknown).toBe(false);
+    const invalid = await caught(
+      setup(json(400, { error: "validation_error", fields: { title: "Curto." } })).api.update(ID, { title: "x" }, job.updatedAt),
+    );
+    expect(invalid.kind).toBe("validation");
+    expect(invalid.fields).toEqual({ title: "Curto." });
+  });
+
   it("codifica o id na URL", async () => {
     const { api, fetch } = setup(json(404, { error: "not_found" }));
     await caught(api.get("a/b?c"));

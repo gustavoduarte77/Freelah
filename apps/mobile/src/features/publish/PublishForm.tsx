@@ -1,30 +1,43 @@
 import {
-  buildCreateJobRequest,
   computeDeadline,
   describeDeadline,
   firstErrorField,
   type Category,
+  type JobFormErrors,
   type JobFormField,
 } from "@freelah/shared";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { Button, colors, FormError, TextField } from "../../components/ui";
 import { CategoryChips } from "../jobs/components";
-import { publishDraft, usePublishDraft } from "./store";
+import { useJobForm, type JobFormStore } from "./store";
 
-/** Altura de cada campo dentro do formulário (para rolar até o primeiro erro). Só há um formulário. */
+/** Altura de cada campo dentro do formulário (para rolar até o primeiro erro). Só um formulário fica na tela. */
 const fieldY: Partial<Record<JobFormField | "top", number>> = {};
 
-/** Corpo do formulário: os dados vivem no `publishDraft` (memória), então nada se perde ao navegar. */
+/**
+ * Corpo do formulário, usado para publicar e para editar. Os dados vivem em `form` (memória), então
+ * nada se perde ao navegar. `onSubmit` valida e segue com a ação; devolve as mensagens por campo
+ * quando há erro (o formulário as mostra e rola até o primeiro) ou `null` quando está tudo certo.
+ */
 export function PublishForm({
+  form,
   categories,
   scrollToY,
+  submitLabel,
+  onSubmit,
+  submitting = false,
 }: {
+  form: JobFormStore;
   categories: Category[];
   /** Rola a tela até a posição (relativa ao início do formulário). */
   scrollToY: (y: number) => void;
+  submitLabel: string;
+  onSubmit: () => JobFormErrors | null;
+  /** Há um envio em andamento: o botão fica ocupado e desabilitado. */
+  submitting?: boolean;
 }) {
-  const { values, errors } = usePublishDraft();
+  const { values, errors } = useJobForm(form);
 
   const track = (field: JobFormField | "top") => (event: LayoutChangeEvent) => {
     fieldY[field] = event.nativeEvent.layout.y;
@@ -34,15 +47,14 @@ export function PublishForm({
     for (const field of fields) fieldY[field] = event.nativeEvent.layout.y;
   };
 
-  function review() {
-    const result = buildCreateJobRequest(values, new Date());
-    if (result.ok) {
-      publishDraft.setErrors({});
-      publishDraft.setStep("review");
+  function submit() {
+    const found = onSubmit();
+    if (!found) {
+      form.setErrors({});
       return;
     }
-    publishDraft.setErrors(result.errors);
-    const first = firstErrorField(result.errors);
+    form.setErrors(found);
+    const first = firstErrorField(found);
     scrollToY(Math.max(0, (first ? fieldY[first] : fieldY.top) ?? 0) - 12);
   }
 
@@ -69,7 +81,7 @@ export function PublishForm({
         <TextField
           label="Título"
           value={values.title}
-          onChangeText={(v) => publishDraft.setField("title", v)}
+          onChangeText={(v) => form.setField("title", v)}
           error={errors.title}
           placeholder="Ex.: Pintura de sala"
           maxLength={100}
@@ -80,7 +92,7 @@ export function PublishForm({
         <TextField
           label="Descrição"
           value={values.description}
-          onChangeText={(v) => publishDraft.setField("description", v)}
+          onChangeText={(v) => form.setField("description", v)}
           error={errors.description}
           placeholder="Explique o que precisa ser feito"
           multiline
@@ -97,7 +109,7 @@ export function PublishForm({
           selected={selectedSlug}
           showAll={false}
           onSelect={(slug) =>
-            publishDraft.setField("categoryId", categories.find((c) => c.slug === slug)?.id ?? "")
+            form.setField("categoryId", categories.find((c) => c.slug === slug)?.id ?? "")
           }
         />
         {errors.categoryId ? <Text style={styles.error}>{errors.categoryId}</Text> : null}
@@ -108,7 +120,7 @@ export function PublishForm({
           <TextField
             label="Cidade"
             value={values.city}
-            onChangeText={(v) => publishDraft.setField("city", v)}
+            onChangeText={(v) => form.setField("city", v)}
             error={errors.city}
             maxLength={80}
             autoComplete="off"
@@ -118,7 +130,7 @@ export function PublishForm({
           <TextField
             label="UF"
             value={values.state}
-            onChangeText={(v) => publishDraft.setField("state", v)}
+            onChangeText={(v) => form.setField("state", v)}
             error={errors.state}
             placeholder="MG"
             maxLength={2}
@@ -133,7 +145,7 @@ export function PublishForm({
           <TextField
             label="Data do serviço"
             value={values.scheduledDate}
-            onChangeText={(v) => publishDraft.setField("scheduledDate", v)}
+            onChangeText={(v) => form.setField("scheduledDate", v)}
             error={errors.scheduledDate}
             placeholder="DD/MM/AAAA"
             keyboardType="number-pad"
@@ -144,7 +156,7 @@ export function PublishForm({
           <TextField
             label="Horário"
             value={values.startTime}
-            onChangeText={(v) => publishDraft.setField("startTime", v)}
+            onChangeText={(v) => form.setField("startTime", v)}
             error={errors.startTime}
             placeholder="HH:MM"
             keyboardType="number-pad"
@@ -157,7 +169,7 @@ export function PublishForm({
         <TextField
           label="Valor (R$)"
           value={values.price}
-          onChangeText={(v) => publishDraft.setField("price", v)}
+          onChangeText={(v) => form.setField("price", v)}
           error={errors.price}
           placeholder="200,00"
           keyboardType="decimal-pad"
@@ -168,7 +180,7 @@ export function PublishForm({
           accessibilityState={{ checked: values.negotiable }}
           aria-checked={values.negotiable}
           accessibilityLabel="Valor negociável"
-          onPress={() => publishDraft.setField("negotiable", !values.negotiable)}
+          onPress={() => form.setField("negotiable", !values.negotiable)}
           style={styles.checkRow}
         >
           <View style={[styles.checkBox, values.negotiable ? styles.checkBoxOn : null]}>
@@ -182,7 +194,7 @@ export function PublishForm({
         <TextField
           label="Publicada até (último dia)"
           value={values.deadlineDate}
-          onChangeText={(v) => publishDraft.setField("deadlineDate", v)}
+          onChangeText={(v) => form.setField("deadlineDate", v)}
           error={errors.deadlineDate}
           placeholder="DD/MM/AAAA"
           keyboardType="number-pad"
@@ -199,7 +211,7 @@ export function PublishForm({
         <TextField
           label="Informações adicionais (opcional)"
           value={values.additionalInfo}
-          onChangeText={(v) => publishDraft.setField("additionalInfo", v)}
+          onChangeText={(v) => form.setField("additionalInfo", v)}
           error={errors.additionalInfo}
           placeholder="Ferramentas, acesso ao local, observações…"
           multiline
@@ -209,7 +221,7 @@ export function PublishForm({
         />
       </Block>
 
-      <Button title="Revisar" onPress={review} />
+      <Button title={submitLabel} onPress={submit} loading={submitting} disabled={submitting} />
     </View>
   );
 }

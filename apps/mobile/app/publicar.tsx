@@ -1,3 +1,4 @@
+import { buildCreateJobRequest } from "@freelah/shared";
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useRef, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
@@ -130,7 +131,18 @@ function PublishFlow({
           <Button title="Conferir em Minhas oportunidades" variant="link" onPress={() => router.push("/minhas-oportunidades")} />
         </View>
       ) : null}
-      <PublishForm categories={categories.state.data} scrollToY={scrollToY} />
+      <PublishForm
+        form={publishDraft}
+        categories={categories.state.data}
+        scrollToY={scrollToY}
+        submitLabel="Revisar"
+        onSubmit={() => {
+          const result = buildCreateJobRequest(publishDraft.getState().values, new Date());
+          if (!result.ok) return result.errors;
+          publishDraft.setStep("review");
+          return null;
+        }}
+      />
     </View>
   );
 }

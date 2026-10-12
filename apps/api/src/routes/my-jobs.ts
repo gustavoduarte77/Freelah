@@ -234,7 +234,23 @@ export function createMyJobsRouter(
         return;
       }
 
-      const parsed = updateJobSchema.safeParse(req.body);
+      // Versão que a pessoa estava vendo (opcional): se a oportunidade mudou desde então, nada é
+      // alterado, em vez de misturar a edição com a de outra tela.
+      let payload: unknown = req.body;
+      if (typeof payload === "object" && payload !== null && !Array.isArray(payload) && "expectedUpdatedAt" in payload) {
+        const { expectedUpdatedAt, ...rest } = payload as Record<string, unknown>;
+        if (typeof expectedUpdatedAt !== "string" || Number.isNaN(Date.parse(expectedUpdatedAt))) {
+          sendValidation(res, { expectedUpdatedAt: "Informe a versão que você estava vendo." });
+          return;
+        }
+        if (Date.parse(expectedUpdatedAt) !== row.updatedAt.getTime()) {
+          res.status(409).json({ error: "conflict", message: CONFLICT_MESSAGE });
+          return;
+        }
+        payload = rest;
+      }
+
+      const parsed = updateJobSchema.safeParse(payload);
       if (!parsed.success) {
         sendValidation(res, jobFieldErrors(parsed.error));
         return;

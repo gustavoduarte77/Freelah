@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import type { OwnJob } from "./jobs-write";
 import {
   DATE_FORMAT_MESSAGE,
   PRICE_FORMAT_MESSAGE,
   PRICE_REQUIRED_MESSAGE,
   TIME_FORMAT_MESSAGE,
   buildCreateJobRequest,
+  buildUpdateJobRequest,
+  centsToReaisInput,
+  jobToFormValues,
   computeDeadline,
   describeDeadline,
   emptyJobForm,
@@ -305,5 +309,142 @@ describe("mapServerFields e firstErrorField", () => {
     expect(firstErrorField({ deadlineDate: "c", scheduledDate: "d" })).toBe("scheduledDate");
     expect(firstErrorField({ _: "geral" })).toBeNull();
     expect(firstErrorField({})).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Edição
+// ---------------------------------------------------------------------------
+
+// Serviço 20/10/2026 08:00 (Brasília), prazo 19/10/2026 23:59 (Brasília) = 20/10 02:59 UTC.
+const OWN: OwnJob = {
+  id: "j1",
+  title: "Pintura de sala",
+  description: "Preciso pintar uma sala de 20 m².",
+  additionalInfo: null,
+  category: { id: CATEGORY, slug: "construcao-civil", name: "Construção Civil" },
+  city: "Cataguases",
+  state: "MG",
+  scheduledDate: "2026-10-20",
+  startTime: "08:00",
+  proposedPriceCents: 20000,
+  negotiable: true,
+  status: "PUBLISHED",
+  isDemo: false,
+  expiresAt: "2026-10-20T02:59:00.000Z",
+  publishedAt: "2026-10-12T14:00:00.000Z",
+  cancelledAt: null,
+  createdAt: "2026-10-12T14:00:00.000Z",
+  updatedAt: "2026-10-12T14:00:00.000Z",
+  canEdit: true,
+  canPublish: false,
+  canCancel: true,
+};
+
+describe("centsToReaisInput", () => {
+  it("formata em reais como a pessoa digita e volta igual ao ler", () => {
+    expect(centsToReaisInput(20000)).toBe("200,00");
+    expect(centsToReaisInput(5)).toBe("0,05");
+    expect(centsToReaisInput(123456)).toBe("1234,56");
+    for (const cents of [0, 5, 99, 100, 20000, 123456, 9_999_999]) {
+      const text = centsToReaisInput(cents);
+      const result = buildCreateJobRequest({ ...valid, price: text }, NOW);
+      expect(result.ok, text).toBe(true);
+      if (result.ok) expect(result.request.proposedPriceCents).toBe(cents);
+    }
+  });
+});
+
+describe("jobToFormValues", () => {
+  it("preenche o formulário com os dados atuais, no horário de Brasília", () => {
+    expect(jobToFormValues(OWN)).toEqual({
+      title: "Pintura de sala",
+      description: "Preciso pintar uma sala de 20 m².",
+      additionalInfo: "",
+      categoryId: CATEGORY,
+      city: "Cataguases",
+      state: "MG",
+      scheduledDate: "20/10/2026",
+      startTime: "08:00",
+      price: "200,00",
+      negotiable: true,
+      deadlineDate: "19/10/2026",
+    });
+  });
+
+  it("informações adicionais existentes aparecem no campo", () => {
+    expect(jobToFormValues({ ...OWN, additionalInfo: "Levar rolo." }).additionalInfo).toBe("Levar rolo.");
+  });
+});
+
+describe("buildUpdateJobRequest", () => {
+  it("sem mexer em nada, o formulário aberto não gera mudanças (nem reenvia o prazo)", () => {
+    const result = buildUpdateJobRequest(jobToFormValues(OWN), OWN, NOW);
+    expect(result).toEqual({ ok: true, changes: {}, changedFields: [] });
+  });
+
+  it("envia só o que mudou: título e valor", () => {
+    const values = { ...jobToFormValues(OWN), title: "  Pintura   de quarto ", price: "250" };
+    const result = buildUpdateJobRequest(values, OWN, NOW);
+    expect(result).toEqual({
+      ok: true,
+      changes: { title: "Pintura de quarto", proposedPriceCents: 25000 },
+      changedFields: ["title", "proposedPriceCents"],
+    });
+  });
+
+  it("informações adicionais: preencher e limpar", () => {
+    const filled = buildUpdateJobRequest({ ...jobToFormValues(OWN), additionalInfo: " Levar rolo " }, OWN, NOW);
+    expect(filled).toMatchObject({ ok: true, changes: { additionalInfo: "Levar rolo" } });
+    const withInfo = { ...OWN, additionalInfo: "Levar rolo" };
+    const cleared = buildUpdateJobRequest({ ...jobToFormValues(withInfo), additionalInfo: "  " }, withInfo, NOW);
+    expect(cleared).toMatchObject({ ok: true, changes: { additionalInfo: null } });
+  });
+
+  it("negociável desligado entra nas mudanças", () => {
+    const result = buildUpdateJobRequest({ ...jobToFormValues(OWN), negotiable: false }, OWN, NOW);
+    expect(result).toMatchObject({ ok: true, changes: { negotiable: false } });
+  });
+
+  it("mudar o prazo envia o prazo, com 23:59 de Brasília", () => {
+    const result = buildUpdateJobRequest({ ...jobToFormValues(OWN), deadlineDate: "18/10/2026" }, OWN, NOW);
+    expect(result).toMatchObject({ ok: true, changes: { expiresAt: "2026-10-19T02:59:00.000Z" } });
+  });
+
+  it("mudar só a data do serviço envia a data e não reenvia um prazo que não mudou", () => {
+    const result = buildUpdateJobRequest({ ...jobToFormValues(OWN), scheduledDate: "25/10/2026" }, OWN, NOW);
+    expect(result).toMatchObject({ ok: true, changes: { scheduledDate: "2026-10-25" } });
+    if (result.ok) expect(result.changes).not.toHaveProperty("expiresAt");
+  });
+
+  it("rascunho antigo com data e prazo vencidos: recusa, e corrigir data e prazo libera", () => {
+    const stale: OwnJob = {
+      ...OWN,
+      status: "DRAFT",
+      scheduledDate: "2026-09-01",
+      expiresAt: "2026-08-31T02:59:00.000Z",
+      canPublish: true,
+    };
+    const blocked = buildUpdateJobRequest(jobToFormValues(stale), stale, NOW);
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) {
+      expect(blocked.errors.scheduledDate).toBeDefined();
+      expect(blocked.errors.deadlineDate).toBeDefined();
+    }
+    const fixed = buildUpdateJobRequest(
+      { ...jobToFormValues(stale), scheduledDate: "20/10/2026", deadlineDate: "19/10/2026" },
+      stale,
+      NOW,
+    );
+    expect(fixed).toMatchObject({
+      ok: true,
+      changes: { scheduledDate: "2026-10-20", expiresAt: "2026-10-20T02:59:00.000Z" },
+    });
+  });
+
+  it("dados inválidos: devolve as mensagens por campo e nada para enviar", () => {
+    const result = buildUpdateJobRequest({ ...jobToFormValues(OWN), title: "x", price: "abc", state: "ZZ" }, OWN, NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(Object.keys(result.errors).sort()).toEqual(["price", "state", "title"]);
   });
 });

@@ -7,7 +7,13 @@ import {
   UNCONFIRMED_MESSAGE,
   createSubmissionController,
   describeCheckDraftError,
+  CANCEL_JOB_UNCONFIRMED_MESSAGE,
+  describeCancelJobError,
+  describeUpdateJobError,
+  interpretCheckedEdit,
+  UPDATE_JOB_UNCONFIRMED_MESSAGE,
   describePublishDraftError,
+  interpretCheckedCancel,
   describeSubmissionError,
   interpretCheckedJob,
 } from "./publish-submission";
@@ -308,5 +314,123 @@ describe("describeCheckDraftError", () => {
 
   it("outros erros: estado desconhecido", () => {
     expect(describeCheckDraftError(new MyJobsApiError("rejected", { status: 400 }))).toMatchObject({ retryCheck: true });
+  });
+});
+
+describe("describeCancelJobError", () => {
+  it("resultado desconhecido (rede, 5xx, resposta ilegível): manda conferir, sem afirmar cancelamento", () => {
+    for (const error of [
+      new MyJobsApiError("network", { mutating: true }),
+      new MyJobsApiError("server", { status: 503, mutating: true }),
+      new MyJobsApiError("invalid_response", { status: 200, mutating: true }),
+    ]) {
+      expect(describeCancelJobError(error)).toEqual({
+        message: CANCEL_JOB_UNCONFIRMED_MESSAGE,
+        checkNow: true,
+        needsSignIn: false,
+      });
+    }
+  });
+
+  it("sessão expirada pede para entrar de novo", () => {
+    const failure = describeCancelJobError(new MyJobsApiError("unauthorized", { status: 401, mutating: true }));
+    expect(failure).toMatchObject({ needsSignIn: true, checkNow: false });
+    expect(failure.message).toMatch(/sessão/);
+  });
+
+  it("conflito de estado usa a mensagem da API e manda conferir", () => {
+    expect(
+      describeCancelJobError(
+        new MyJobsApiError("invalid_state", { message: "Esta oportunidade já foi cancelada.", status: 409, mutating: true }),
+      ),
+    ).toEqual({ message: "Esta oportunidade já foi cancelada.", checkNow: true, needsSignIn: false });
+    expect(describeCancelJobError(new MyJobsApiError("conflict", { status: 409, mutating: true })).checkNow).toBe(true);
+    expect(describeCancelJobError(new MyJobsApiError("not_found", { status: 404, mutating: true })).checkNow).toBe(true);
+  });
+
+  it("outra recusa diz que nada foi alterado", () => {
+    const failure = describeCancelJobError(new MyJobsApiError("rejected", { status: 422, mutating: true }));
+    expect(failure.message).toBe("Não foi possível cancelar. Nada foi alterado.");
+    expect(failure.checkNow).toBe(false);
+  });
+});
+
+describe("interpretCheckedCancel", () => {
+  it("só CANCELLED conta como cancelada; estados ativos continuam abertos; os demais são outro estado", () => {
+    expect(interpretCheckedCancel({ status: "CANCELLED" })).toBe("cancelled");
+    for (const status of ["DRAFT", "PUBLISHED", "NEGOTIATING"] as const) {
+      expect(interpretCheckedCancel({ status })).toBe("still_open");
+    }
+    for (const status of ["HIRED", "COMPLETED", "EXPIRED"] as const) {
+      expect(interpretCheckedCancel({ status })).toBe("other");
+    }
+  });
+});
+
+describe("describeUpdateJobError", () => {
+  it("resultado desconhecido (rede, 5xx, resposta ilegível): manda conferir, sem afirmar que salvou", () => {
+    for (const error of [
+      new MyJobsApiError("network", { mutating: true }),
+      new MyJobsApiError("server", { status: 503, mutating: true }),
+      new MyJobsApiError("invalid_response", { status: 200, mutating: true }),
+    ]) {
+      expect(describeUpdateJobError(error)).toMatchObject({
+        message: UPDATE_JOB_UNCONFIRMED_MESSAGE,
+        checkNow: true,
+        stale: false,
+        needsSignIn: false,
+      });
+    }
+  });
+
+  it("sessão expirada pede para entrar de novo e diz que o digitado foi mantido", () => {
+    const failure = describeUpdateJobError(new MyJobsApiError("unauthorized", { status: 401, mutating: true }));
+    expect(failure.needsSignIn).toBe(true);
+    expect(failure.message).toMatch(/mantido/);
+  });
+
+  it("recusa por campo traz as mensagens da API e diz que nada foi salvo", () => {
+    const failure = describeUpdateJobError(
+      new MyJobsApiError("validation", { status: 400, fields: { title: "Informe o título." }, mutating: true }),
+    );
+    expect(failure.fields).toEqual({ title: "Informe o título." });
+    expect(failure.message).toMatch(/Nada foi salvo/);
+    expect(failure.checkNow).toBe(false);
+  });
+
+  it("conflito de versão: marca como desatualizada, sem oferecer reenvio", () => {
+    const failure = describeUpdateJobError(new MyJobsApiError("conflict", { status: 409, mutating: true }));
+    expect(failure).toMatchObject({ stale: true, checkNow: false });
+    expect(failure.message).toMatch(/não foram salvas/);
+  });
+
+  it("estado que não permite mais editar usa a mensagem da API e manda conferir", () => {
+    const failure = describeUpdateJobError(
+      new MyJobsApiError("invalid_state", {
+        message: "Esta oportunidade foi cancelada e não pode mais ser alterada.",
+        status: 409,
+        mutating: true,
+      }),
+    );
+    expect(failure).toMatchObject({ checkNow: true, stale: false });
+    expect(failure.message).toContain("cancelada");
+  });
+
+  it("não encontrada e outras recusas", () => {
+    expect(describeUpdateJobError(new MyJobsApiError("not_found", { status: 404, mutating: true })).message).toMatch(
+      /Não encontramos/,
+    );
+    expect(describeUpdateJobError(new MyJobsApiError("rejected", { status: 422, mutating: true })).message).toBe(
+      "Não foi possível salvar. Nada foi alterado.",
+    );
+  });
+});
+
+describe("interpretCheckedEdit", () => {
+  it("versão igual: não foi aplicado; versão diferente: mudou (sem afirmar de quem); sem permissão: travada", () => {
+    expect(interpretCheckedEdit("v1", { updatedAt: "v1", canEdit: true })).toBe("unchanged");
+    expect(interpretCheckedEdit("v1", { updatedAt: "v2", canEdit: true })).toBe("changed");
+    expect(interpretCheckedEdit("v1", { updatedAt: "v1", canEdit: false })).toBe("locked");
+    expect(interpretCheckedEdit("v1", { updatedAt: "v2", canEdit: false })).toBe("locked");
   });
 });

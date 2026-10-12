@@ -211,3 +211,116 @@ export function describeCheckDraftError(error: MyJobsApiError): CheckDraftFailur
       };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Cancelar uma oportunidade (Minhas oportunidades)
+// ---------------------------------------------------------------------------
+
+export const CANCEL_JOB_UNCONFIRMED_MESSAGE =
+  "Não conseguimos confirmar se a oportunidade foi cancelada. Confira o estado atual antes de tentar de novo.";
+
+export const STILL_OPEN_MESSAGE = "Conferimos: a oportunidade continua ativa. Nada foi cancelado.";
+
+export interface CancelJobFailure {
+  /** Texto para a pessoa. */
+  message: string;
+  /** A lista pode estar desatualizada ou o resultado é desconhecido: conferir o estado atual. */
+  checkNow: boolean;
+  /** É preciso entrar de novo. */
+  needsSignIn: boolean;
+}
+
+/**
+ * O que dizer quando cancelar falha. Só a resposta da API diz se cancelou: sem resposta confiável
+ * o cancelamento nunca é dado como feito, e a pessoa confere o estado atual (GET da oportunidade).
+ */
+export function describeCancelJobError(error: MyJobsApiError): CancelJobFailure {
+  if (error.outcomeUnknown) {
+    return { message: CANCEL_JOB_UNCONFIRMED_MESSAGE, checkNow: true, needsSignIn: false };
+  }
+  switch (error.kind) {
+    case "unauthorized":
+      return { message: "Sua sessão terminou. Entre de novo para cancelar.", checkNow: false, needsSignIn: true };
+    case "invalid_state":
+    case "conflict":
+      return { message: error.message, checkNow: true, needsSignIn: false };
+    case "not_found":
+      return { message: "Não encontramos mais esta oportunidade.", checkNow: true, needsSignIn: false };
+    default:
+      return { message: "Não foi possível cancelar. Nada foi alterado.", checkNow: false, needsSignIn: false };
+  }
+}
+
+/** O que a leitura de uma oportunidade confirmou depois de uma tentativa de cancelar. */
+export type CheckedCancelOutcome = "cancelled" | "still_open" | "other";
+
+/** Cancelada; ainda ativa (rascunho, publicada ou em negociação); ou outro estado (expirada, contratada...). */
+export function interpretCheckedCancel(job: Pick<OwnJob, "status">): CheckedCancelOutcome {
+  if (job.status === "CANCELLED") return "cancelled";
+  if (job.status === "DRAFT" || job.status === "PUBLISHED" || job.status === "NEGOTIATING") return "still_open";
+  return "other";
+}
+
+// ---------------------------------------------------------------------------
+// Editar uma oportunidade
+// ---------------------------------------------------------------------------
+
+export const UPDATE_JOB_UNCONFIRMED_MESSAGE =
+  "Não conseguimos confirmar se as alterações foram salvas. Confira o estado atual antes de tentar de novo.";
+
+export const EDIT_NO_CHANGES_MESSAGE = "Você não alterou nada ainda.";
+
+export interface UpdateJobFailure {
+  /** Texto para a pessoa. */
+  message: string;
+  /** Mensagens por campo da API (só em recusa por validação); nada foi salvo. */
+  fields: Record<string, string>;
+  /** O resultado é desconhecido ou o estado mudou: o melhor próximo passo é conferir o estado atual. */
+  checkNow: boolean;
+  /** Alterada em outro lugar: a versão aberta ficou velha e só dá para continuar com a atual. */
+  stale: boolean;
+  /** É preciso entrar de novo (o que foi digitado continua guardado). */
+  needsSignIn: boolean;
+}
+
+/**
+ * O que dizer quando salvar uma edição falha. Só a resposta da API diz que salvou: sem resposta
+ * confiável a alteração nunca é dada como salva, e nada é reenviado sozinho.
+ */
+export function describeUpdateJobError(error: MyJobsApiError): UpdateJobFailure {
+  const base = { fields: {}, checkNow: false, stale: false, needsSignIn: false };
+  if (error.outcomeUnknown) return { ...base, message: UPDATE_JOB_UNCONFIRMED_MESSAGE, checkNow: true };
+  switch (error.kind) {
+    case "unauthorized":
+      return { ...base, message: "Sua sessão terminou. Entre de novo para salvar. O que você digitou foi mantido.", needsSignIn: true };
+    case "validation":
+      return { ...base, message: "Alguns campos não foram aceitos. Nada foi salvo.", fields: error.fields };
+    case "conflict":
+      return {
+        ...base,
+        message: "Esta oportunidade foi alterada em outro lugar. Suas alterações não foram salvas.",
+        stale: true,
+      };
+    case "invalid_state":
+      return { ...base, message: error.message, checkNow: true };
+    case "not_found":
+      return { ...base, message: "Não encontramos mais esta oportunidade." };
+    default:
+      return { ...base, message: "Não foi possível salvar. Nada foi alterado." };
+  }
+}
+
+/** O que a leitura confirmou depois de um salvamento sem resposta confiável. */
+export type CheckedEditOutcome = "unchanged" | "changed" | "locked";
+
+/**
+ * Compara só a versão: se continua a que a pessoa abriu, o servidor não aplicou nada; se mudou, não
+ * dá para saber (sem adivinhar) se foi este salvamento ou outra tela; se não pode mais ser editada, ela travou.
+ */
+export function interpretCheckedEdit(
+  openedUpdatedAt: string,
+  current: Pick<OwnJob, "updatedAt" | "canEdit">,
+): CheckedEditOutcome {
+  if (!current.canEdit) return "locked";
+  return current.updatedAt === openedUpdatedAt ? "unchanged" : "changed";
+}

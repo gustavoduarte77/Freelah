@@ -406,6 +406,72 @@ describe.skipIf(!testDatabaseUrl)("minhas oportunidades: criar, editar, publicar
       expect(new Date(res.body.job.updatedAt).getTime()).toBeGreaterThan(new Date(job.updatedAt).getTime());
     });
 
+    it("com a versão que a pessoa viu (expectedUpdatedAt) a edição passa; sem o campo, continua passando", async () => {
+      const { agent } = await signUp();
+      const job = await createJob(agent);
+      const first = await patch(agent, job.id, { title: "Primeira edição", expectedUpdatedAt: job.updatedAt });
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      expect(first.body.job.title).toBe("Primeira edição");
+      expect((await patch(agent, job.id, { title: "Sem versão informada" })).status).toBe(200);
+    });
+
+    it("versão desatualizada: 409 conflict e NADA é alterado (inclusive com campos inválidos junto)", async () => {
+      const { agent } = await signUp();
+      const job = await createJob(agent);
+      const other = await patch(agent, job.id, { title: "Editada em outra aba" });
+      expect(other.status).toBe(200);
+      const before = await prisma.job.findUniqueOrThrow({ where: { id: job.id } });
+
+      const stale = await patch(agent, job.id, { title: "Editada com tela velha", expectedUpdatedAt: job.updatedAt });
+      expect(stale.status).toBe(409);
+      expect(stale.body.error).toBe("conflict");
+      const staleInvalid = await patch(agent, job.id, { title: "x", expectedUpdatedAt: job.updatedAt });
+      expect(staleInvalid.status).toBe(409);
+      expect(await prisma.job.findUniqueOrThrow({ where: { id: job.id } })).toEqual(before);
+
+      // Com a versão atual, a mesma edição passa.
+      const fresh = await patch(agent, job.id, { title: "Editada com tela nova", expectedUpdatedAt: other.body.job.updatedAt });
+      expect(fresh.status).toBe(200);
+    });
+
+    it("versão inválida (não é texto de data) é 400 e não altera nada", async () => {
+      const { agent } = await signUp();
+      const job = await createJob(agent);
+      for (const expectedUpdatedAt of ["ontem", 123, null, ""]) {
+        const res = await patch(agent, job.id, { title: "Nova", expectedUpdatedAt });
+        expect(res.status).toBe(400);
+        expect(res.body.fields).toHaveProperty("expectedUpdatedAt");
+      }
+      expect((await prisma.job.findUniqueOrThrow({ where: { id: job.id } })).title).toBe("Pintura de sala");
+    });
+
+    it("a versão não abre brecha: oportunidade de outra pessoa continua 404 e cancelada continua 409 invalid_state", async () => {
+      const a = await signUp("A");
+      const b = await signUp("B");
+      const job = await createJob(a.agent);
+      expect((await patch(b.agent, job.id, { title: "Invadida", expectedUpdatedAt: job.updatedAt })).status).toBe(404);
+      const cancelled = await post(a.agent, `/me/jobs/${job.id}/cancel`);
+      const res = await patch(a.agent, job.id, { title: "Tarde demais", expectedUpdatedAt: cancelled.body.job.updatedAt });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe("invalid_state");
+    });
+
+    it("rascunho com prazo vencido pode ser corrigido pela edição e depois publicado", async () => {
+      const { agent, id } = await signUp();
+      const row = await insertJob(id, "DRAFT", { expiresAt: new Date(Date.now() - 2 * DAY) });
+      const stale = await post(agent, `/me/jobs/${row.id}/publish`);
+      expect(stale.status).toBe(400);
+      const service = Date.now() + 10 * DAY;
+      const fix = await patch(agent, row.id, {
+        scheduledDate: brasiliaDay(service),
+        startTime: "08:00",
+        expiresAt: new Date(service - DAY).toISOString(),
+        expectedUpdatedAt: new Date(row.updatedAt).toISOString(),
+      });
+      expect(fix.status, JSON.stringify(fix.body)).toBe(200);
+      expect((await post(agent, `/me/jobs/${row.id}/publish`)).status).toBe(200);
+    });
+
     it("quem edita uma publicada muda o que a exploração pública mostra", async () => {
       const { agent } = await signUp();
       const job = await createJob(agent, { publish: true });
