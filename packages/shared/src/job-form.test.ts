@@ -336,6 +336,7 @@ const OWN: OwnJob = {
   cancelledAt: null,
   createdAt: "2026-10-12T14:00:00.000Z",
   updatedAt: "2026-10-12T14:00:00.000Z",
+  interestCount: 0,
   canEdit: true,
   canPublish: false,
   canCancel: true,

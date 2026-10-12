@@ -151,6 +151,14 @@ export function MyJobCard({
       </Text>
 
       {job.status === "DRAFT" ? <Text style={styles.meta}>Rascunho: ainda não aparece para ninguém.</Text> : null}
+      {job.interestCount > 0 ? (
+        <>
+          <Text style={styles.interested} testID="my-job-interested">
+            {job.interestCount === 1 ? "1 pessoa interessada" : `${job.interestCount} pessoas interessadas`}
+          </Text>
+          <Button title="Ver interessados" variant="link" onPress={() => router.push(`/interessados/${job.id}` as Href)} />
+        </>
+      ) : null}
 
       {action.kind === "confirming" ? (
         <View style={styles.confirm} accessibilityRole="alert" testID="publish-draft-confirm">
@@ -271,5 +279,6 @@ const styles = StyleSheet.create({
   error: { backgroundColor: "#FCE8E6", borderRadius: 12, padding: 12, gap: 6 },
   errorText: { fontSize: 14, color: colors.error },
   note: { fontSize: 14, color: colors.text, backgroundColor: "#E8F0FE", borderRadius: 10, padding: 10 },
+  interested: { fontSize: 14, fontWeight: "700", color: colors.brand },
   success: { fontSize: 14, fontWeight: "600", color: colors.brand },
 });

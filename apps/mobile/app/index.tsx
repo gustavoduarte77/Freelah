@@ -1,5 +1,5 @@
 import type { Preferences, PreferencesSyncState } from "@freelah/shared";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -141,7 +141,16 @@ export default function Index() {
   const preferences = knownPreferences(prefsState);
   const publishFirst = Boolean(preferences?.wantsToHire && !preferences.wantsWork);
   const findWork = (
-    <Button key="find" title="Encontrar trabalho" onPress={() => router.push("/explorar")} />
+    <View key="find" style={styles.publish}>
+      <Button title="Encontrar trabalho" onPress={() => router.push("/explorar")} />
+      {session ? (
+        <Button
+          title="Meus interesses"
+          variant="link"
+          onPress={() => router.push("/meus-interesses" as Href)}
+        />
+      ) : null}
+    </View>
   );
   const publish = (
     <View key="publish" style={styles.publish}>

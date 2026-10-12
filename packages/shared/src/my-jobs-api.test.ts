@@ -22,6 +22,7 @@ const job = {
   cancelledAt: null,
   createdAt: "2026-10-12T15:00:00.000Z",
   updatedAt: "2026-10-12T15:00:00.000Z",
+  interestCount: 0,
   canEdit: true,
   canPublish: true,
   canCancel: true,
@@ -231,5 +232,51 @@ describe("createMyJobsApi: erros", () => {
     const error = await caught(setup(new Error("x")).api.create(request));
     expect(error.message).toMatch(/Não foi possível conectar/);
     expect((await caught(setup(json(401, {})).api.list())).message).toMatch(/sessão/);
+  });
+});
+
+describe("createMyJobsApi: interesses", () => {
+  it("expressInterest faz POST /jobs/:id/interest e devolve o interesse", async () => {
+    const { api, fetch } = setup(json(201, { interest: { id: "i1", status: "PENDING" } }));
+    expect(await api.expressInterest(ID)).toEqual({ id: "i1", status: "PENDING" });
+    expect(fetch.mock.calls[0]![0]).toBe(`http://api.test/jobs/${ID}/interest`);
+    expect(fetch.mock.calls[0]![1].method).toBe("POST");
+  });
+
+  it("recusa já demonstrou: kind invalid_state com code already_interested (e resultado conhecido)", async () => {
+    const error = await caught(
+      setup(json(409, { error: "already_interested", message: "Você já demonstrou interesse." })).api.expressInterest(ID),
+    );
+    expect(error.kind).toBe("invalid_state");
+    expect(error.code).toBe("already_interested");
+    expect(error.outcomeUnknown).toBe(false);
+  });
+
+  it("rede e 5xx ao demonstrar interesse são resultado desconhecido", async () => {
+    expect((await caught(setup(new Error("offline")).api.expressInterest(ID))).outcomeUnknown).toBe(true);
+    expect((await caught(setup(json(503, {})).api.expressInterest(ID))).outcomeUnknown).toBe(true);
+  });
+
+  it("withdrawInterest, jobViewer, myInterests e jobInterests usam as rotas certas", async () => {
+    const withdraw = setup(json(200, { interest: { id: "i1", status: "WITHDRAWN" } }));
+    expect((await withdraw.api.withdrawInterest("i1")).status).toBe("WITHDRAWN");
+    expect(withdraw.fetch.mock.calls[0]![0]).toBe("http://api.test/me/interests/i1/withdraw");
+
+    const viewer = setup(json(200, { isOwner: false, interest: null }));
+    expect(await viewer.api.jobViewer(ID)).toEqual({ isOwner: false, interest: null });
+    expect(viewer.fetch.mock.calls[0]![0]).toBe(`http://api.test/jobs/${ID}/viewer`);
+    expect(viewer.fetch.mock.calls[0]![1].method).toBe("GET");
+
+    const mine = setup(json(200, { interests: [] }));
+    expect(await mine.api.myInterests()).toEqual([]);
+    expect(mine.fetch.mock.calls[0]![0]).toBe("http://api.test/me/interests");
+
+    const owned = setup(json(200, { interests: [{ id: "i1", status: "PENDING", createdAt: "2026-10-12T15:00:00.000Z", worker: { name: "Ana", city: "Muriaé" } }] }));
+    expect((await owned.api.jobInterests(ID))[0]!.worker.name).toBe("Ana");
+    expect(owned.fetch.mock.calls[0]![0]).toBe(`http://api.test/me/jobs/${ID}/interests`);
+  });
+
+  it("resposta fora do contrato vira invalid_response", async () => {
+    expect((await caught(setup(json(200, { isOwner: "talvez" })).api.jobViewer(ID))).kind).toBe("invalid_response");
   });
 });

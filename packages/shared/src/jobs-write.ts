@@ -290,6 +290,8 @@ export const ownJobSchema = z.object({
   cancelledAt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** Pessoas com interesse ativo (pendente) nesta oportunidade. */
+  interestCount: z.number().int().nonnegative().default(0),
   canEdit: z.boolean(),
   canPublish: z.boolean(),
   canCancel: z.boolean(),

@@ -15,6 +15,7 @@ import {
 } from "../../src/features/jobs/components";
 import { useJobDetail } from "../../src/features/jobs/hooks";
 import { useSessionState } from "../../src/features/auth/SessionState";
+import { InterestAction } from "../../src/features/interests/InterestAction";
 
 /** Detalhes da oportunidade (PRD 13.4 e 29.4): público; o interesse exige login. */
 export default function JobDetailScreen() {
@@ -122,12 +123,7 @@ function Detail({ job }: { job: JobDetail }) {
             <Button title="Verificar de novo" variant="link" onPress={recheck} />
           </>
         ) : sessionState.status === "authenticated" ? (
-          <>
-            <Button title="Tenho interesse" disabled onPress={() => undefined} />
-            <Text style={styles.hint}>
-              Em breve: o registro de interesse será liberado na próxima etapa do Freelah.
-            </Text>
-          </>
+          <InterestAction jobId={job.id} />
         ) : (
           <>
             <Button

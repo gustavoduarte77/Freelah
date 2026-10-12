@@ -12,6 +12,7 @@ import type { Config } from "./config";
 import type { PrismaClient } from "./db";
 import { createJobsRouter } from "./routes/jobs";
 import { createMeRouter } from "./routes/me";
+import { createInterestsRouter } from "./routes/interests";
 import { createMyJobsRouter } from "./routes/my-jobs";
 import { createPreferencesRouter } from "./routes/preferences";
 
@@ -48,6 +49,7 @@ export function createApp(
   if (auth) app.use(createMeRouter(auth));
   if (auth && prisma) app.use(createPreferencesRouter(auth, prisma));
   if (auth && prisma) app.use(createMyJobsRouter(auth, prisma));
+  if (auth && prisma) app.use(createInterestsRouter(auth, prisma));
   // Categorias e oportunidades são públicas (PRD 9): não dependem de sessão.
   if (prisma) app.use(createJobsRouter(prisma));
 

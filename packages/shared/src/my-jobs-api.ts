@@ -1,5 +1,15 @@
 import { z } from "zod";
 import {
+  interestResponseSchema,
+  jobInterestsResponseSchema,
+  jobViewerResponseSchema,
+  myInterestsResponseSchema,
+  type InterestResponse,
+  type JobInterest,
+  type JobViewerResponse,
+  type MyInterest,
+} from "./interests";
+import {
   ownJobResponseSchema,
   ownJobsResponseSchema,
   type createJobSchema,
@@ -50,6 +60,8 @@ export class MyJobsApiError extends Error {
   /** Mensagens por campo (só em `validation`), com os nomes de campo da API. */
   readonly fields: Record<string, string>;
   readonly outcomeUnknown: boolean;
+  /** Código de recusa devolvido pela API, quando houve (ex.: "already_interested"). */
+  readonly code?: string;
 
   constructor(
     kind: MyJobsApiErrorKind,
@@ -59,6 +71,8 @@ export class MyJobsApiError extends Error {
       status?: number;
       fields?: Record<string, string>;
       mutating?: boolean;
+      /** Campo `error` da resposta da API (ex.: "already_interested"). */
+      code?: string;
     } = {},
   ) {
     super(options.message ?? MESSAGES[kind], options.cause === undefined ? undefined : { cause: options.cause });
@@ -66,6 +80,7 @@ export class MyJobsApiError extends Error {
     this.kind = kind;
     if (options.status !== undefined) this.status = options.status;
     this.fields = options.fields ?? {};
+    if (options.code !== undefined) this.code = options.code;
     this.outcomeUnknown = Boolean(options.mutating) && UNKNOWN_OUTCOME_KINDS.includes(kind);
   }
 }
@@ -98,6 +113,18 @@ export interface MyJobsApi {
   update(id: string, changes: UpdateJobRequest, expectedUpdatedAt: string): Promise<OwnJob>;
   /** Cancela a própria oportunidade (rascunho, publicada ou em negociação). */
   cancel(id: string): Promise<OwnJob>;
+
+  // --- Interesses (PRD 17) ---
+  /** Demonstra interesse na oportunidade (a pessoa é sempre a da sessão). */
+  expressInterest(jobId: string): Promise<InterestResponse["interest"]>;
+  /** Retira o próprio interesse (só enquanto pendente). */
+  withdrawInterest(interestId: string): Promise<InterestResponse["interest"]>;
+  /** Minha relação com a oportunidade: dona dela, ou com (ou sem) interesse. */
+  jobViewer(jobId: string): Promise<JobViewerResponse>;
+  /** Os interesses que eu demonstrei, com o estado atual de cada oportunidade. */
+  myInterests(): Promise<MyInterest[]>;
+  /** Quem demonstrou interesse na minha oportunidade (só a dona vê). */
+  jobInterests(jobId: string): Promise<JobInterest[]>;
 }
 
 const errorBodySchema = z.object({
@@ -120,7 +147,12 @@ async function toError(response: HttpResponseLike, mutating: boolean): Promise<M
   if (status >= 500) return new MyJobsApiError("server", { status, mutating });
   const parsed = errorBodySchema.safeParse(await readJson(response));
   const body = parsed.success ? parsed.data : {};
-  const options = { status, mutating, ...(body.message ? { message: body.message } : {}) };
+  const options = {
+    status,
+    mutating,
+    ...(body.message ? { message: body.message } : {}),
+    ...(body.error ? { code: body.error } : {}),
+  };
   if (status === 404) return new MyJobsApiError("not_found", options);
   if (status === 400 && body.error === "validation_error" && body.fields) {
     return new MyJobsApiError("validation", { ...options, fields: body.fields });
@@ -132,18 +164,21 @@ async function toError(response: HttpResponseLike, mutating: boolean): Promise<M
 }
 
 export function createMyJobsApi(options: { baseUrl: string; fetch: MyJobsFetch }): MyJobsApi {
-  const base = `${options.baseUrl.replace(/\/$/, "")}/me/jobs`;
+  const root = options.baseUrl.replace(/\/$/, "");
+  const base = `${root}/me/jobs`;
 
-  async function call<T>(
-    method: MyJobsMethod,
-    path: string,
-    body: unknown,
-    parse: (json: unknown) => { success: true; data: T } | { success: false; error: unknown },
-  ): Promise<T> {
+  type Parser<T> = (json: unknown) => { success: true; data: T } | { success: false; error: unknown };
+
+  /** Chamada a `/me/jobs${path}`. */
+  function call<T>(method: MyJobsMethod, path: string, body: unknown, parse: Parser<T>): Promise<T> {
+    return request(`${base}${path}`, method, body, parse);
+  }
+
+  async function request<T>(url: string, method: MyJobsMethod, body: unknown, parse: Parser<T>): Promise<T> {
     const mutating = method !== "GET";
     let response: HttpResponseLike;
     try {
-      response = await options.fetch(`${base}${path}`, {
+      response = await options.fetch(url, {
         method,
         headers: {
           Accept: "application/json",
@@ -190,6 +225,36 @@ export function createMyJobsApi(options: { baseUrl: string; fetch: MyJobsFetch }
     },
     update(id, changes, expectedUpdatedAt) {
       return call("PATCH", `/${encodeURIComponent(id)}`, { ...changes, expectedUpdatedAt }, one);
+    },
+    async expressInterest(jobId) {
+      const result = await request(`${root}/jobs/${encodeURIComponent(jobId)}/interest`, "POST", {}, (json) =>
+        interestResponseSchema.safeParse(json),
+      );
+      return result.interest;
+    },
+    async withdrawInterest(interestId) {
+      const result = await request(`${root}/me/interests/${encodeURIComponent(interestId)}/withdraw`, "POST", {}, (json) =>
+        interestResponseSchema.safeParse(json),
+      );
+      return result.interest;
+    },
+    jobViewer(jobId) {
+      return request(`${root}/jobs/${encodeURIComponent(jobId)}/viewer`, "GET", undefined, (json) =>
+        jobViewerResponseSchema.safeParse(json),
+      );
+    },
+    async myInterests() {
+      const result = await request(`${root}/me/interests`, "GET", undefined, (json) => myInterestsResponseSchema.safeParse(json));
+      return result.interests;
+    },
+    async jobInterests(jobId) {
+      const result = await request(
+        `${root}/me/jobs/${encodeURIComponent(jobId)}/interests`,
+        "GET",
+        undefined,
+        (json) => jobInterestsResponseSchema.safeParse(json),
+      );
+      return result.interests;
     },
     cancel(id) {
       return call("POST", `/${encodeURIComponent(id)}/cancel`, {}, one);

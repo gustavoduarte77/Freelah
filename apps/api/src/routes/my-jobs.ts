@@ -48,6 +48,7 @@ const ownSelect = {
   createdAt: true,
   updatedAt: true,
   category: { select: { id: true, slug: true, name: true } },
+  _count: { select: { interests: { where: { status: "PENDING" } } } },
 } as const;
 
 type OwnRow = NonNullable<Awaited<ReturnType<typeof findOwn>>>;
@@ -82,6 +83,7 @@ function toOwnJob(row: OwnRow, now: Date): OwnJob {
     cancelledAt: row.cancelledAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    interestCount: row._count.interests,
     canEdit: canEditJob(status),
     canPublish: canPublishJob(status),
     canCancel: canCancelJob(status),
