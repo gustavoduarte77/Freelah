@@ -169,15 +169,20 @@ export function CategoryChips({
   categories,
   selected,
   onSelect,
+  showAll = true,
 }: {
   categories: Category[];
   /** Slug selecionado; `null` = todas. `undefined` em `onSelect` limpa o filtro. */
   selected: string | null;
   onSelect: (slug: string | null) => void;
+  /** Mostra o chip "Todas" (filtros). No formulário de publicação não faz sentido. */
+  showAll?: boolean;
 }) {
   return (
     <View style={styles.chips} accessibilityRole="radiogroup">
-      <Chip label="Todas" active={selected === null} onPress={() => onSelect(null)} />
+      {showAll ? (
+        <Chip label="Todas" active={selected === null} onPress={() => onSelect(null)} />
+      ) : null}
       {categories.map((category) => (
         <Chip
           key={category.id}

@@ -145,8 +145,14 @@ export default function Index() {
   );
   const publish = (
     <View key="publish" style={styles.publish}>
-      <Button title="Publicar oportunidade" disabled onPress={() => undefined} />
-      <Text style={styles.hint}>Em breve: a publicação chega na próxima etapa.</Text>
+      <Button title="Publicar oportunidade" onPress={() => router.push("/publicar")} />
+      {session ? (
+        <Button
+          title="Minhas oportunidades"
+          variant="link"
+          onPress={() => router.push("/minhas-oportunidades")}
+        />
+      ) : null}
     </View>
   );
 
