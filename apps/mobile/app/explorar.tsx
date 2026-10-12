@@ -7,10 +7,12 @@ import { Button, TextField, colors } from "../src/components/ui";
 import { BackLink } from "../src/features/jobs/BackLink";
 import {
   CategoryChips,
+  ConnectionBanner,
   EmptyBox,
   ErrorBox,
   JobCard,
   LoadingBox,
+  StaleNotice,
 } from "../src/features/jobs/components";
 import { useCategories, useJobsList } from "../src/features/jobs/hooks";
 import { useDebounced } from "../src/features/jobs/useDebounced";
@@ -46,7 +48,7 @@ export default function ExploreScreen() {
     [query, category, city, price],
   );
   const stable = useDebounced(params, DEBOUNCE_MS);
-  const { state, loadMore, retry, refresh } = useJobsList(stable);
+  const { state, loadMore, retry, refresh } = useJobsList("explore", stable);
   const categories = useCategories();
 
   const activeFilters = [city.trim(), minText.trim(), maxText.trim()].filter(Boolean).length;
@@ -63,6 +65,7 @@ export default function ExploreScreen() {
   const header = (
     <View style={styles.header}>
       <BackLink title="← Início" />
+      <ConnectionBanner />
       <Text style={styles.title} accessibilityRole="header">
         Explorar oportunidades
       </Text>
@@ -112,6 +115,13 @@ export default function ExploreScreen() {
         </View>
       ) : null}
 
+      {price.valid && state.status === "ready" ? (
+        <StaleNotice
+          loadedAt={state.loadedAt}
+          refreshing={state.refreshing}
+          failed={state.refreshError !== null}
+        />
+      ) : null}
       {price.valid && state.status === "ready" ? (
         <Text style={styles.count} accessibilityLiveRegion="polite">
           {state.jobs.length === 0

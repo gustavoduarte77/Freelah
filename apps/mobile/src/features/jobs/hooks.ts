@@ -1,15 +1,17 @@
 import {
-  createJobsListController,
-  createResourceController,
   type Category,
   type JobDetail,
   type JobsListParams,
   type JobsListState,
-  type ResourceController,
   type ResourceState,
 } from "@freelah/shared";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { jobsApi } from "./jobsApi";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import {
+  categoriesController,
+  detailController,
+  exploreJobsController,
+  homeJobsController,
+} from "./registry";
 
 interface Observable<S> {
   getState(): S;
@@ -20,38 +22,33 @@ function useObservable<S>(source: Observable<S>): S {
   return useSyncExternalStore(source.subscribe, source.getState, source.getState);
 }
 
-/** Categorias ativas (PRD 12). Uma consulta por tela, com carregando, erro e tentar de novo. */
+/** Categorias ativas (PRD 12), compartilhadas por todas as telas. */
 export function useCategories(): { state: ResourceState<Category[]>; retry: () => void } {
-  const [controller] = useState(() =>
-    createResourceController<Category[]>(() => jobsApi.listCategories()),
-  );
-  useEffect(() => controller.load(), [controller]);
-  return { state: useObservable(controller), retry: controller.retry };
+  useEffect(() => categoriesController.load(), []);
+  return { state: useObservable(categoriesController), retry: categoriesController.retry };
 }
 
 /** Detalhe de uma oportunidade; muda de controlador quando o id muda. */
 export function useJobDetail(id: string): { state: ResourceState<JobDetail>; retry: () => void } {
-  const controller: ResourceController<JobDetail> = useMemo(
-    () => createResourceController<JobDetail>(() => jobsApi.getJob(id)),
-    [id],
-  );
+  const controller = useMemo(() => detailController(id), [id]);
   useEffect(() => controller.load(), [controller]);
   return { state: useObservable(controller), retry: controller.retry };
 }
 
 /**
- * Lista paginada. Os filtros chegam já estáveis (o chamador faz o debounce); o controlador
- * descarta respostas antigas e não repete requisições para filtros iguais. `null` significa
- * "filtros inválidos": nada é consultado e o estado anterior fica como está (a tela decide o que
- * mostrar no lugar).
+ * Lista de uma tela ("home" ou "explore"). `params: null` significa "filtros inválidos": nada é
+ * consultado e o estado anterior fica como está (a tela decide o que mostrar no lugar).
  */
-export function useJobsList(params: JobsListParams | null): {
+export function useJobsList(
+  scope: "home" | "explore",
+  params: JobsListParams | null,
+): {
   state: JobsListState;
   loadMore: () => void;
   retry: () => void;
   refresh: () => void;
 } {
-  const [controller] = useState(() => createJobsListController({ api: jobsApi }));
+  const controller = scope === "home" ? homeJobsController : exploreJobsController;
   const key = JSON.stringify(params);
   useEffect(() => {
     const current: JobsListParams | null = JSON.parse(key);

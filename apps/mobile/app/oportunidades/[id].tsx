@@ -5,9 +5,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, colors } from "../../src/components/ui";
 import { BackLink } from "../../src/features/jobs/BackLink";
 import {
+  ConnectionBanner,
   DemoBadge,
   ErrorBox,
   LoadingBox,
+  StaleNotice,
   StatusBadge,
   formatLocalDate,
 } from "../../src/features/jobs/components";
@@ -25,6 +27,7 @@ export default function JobDetailScreen() {
       <Stack.Screen options={{ title: "Oportunidade" }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <BackLink title="← Voltar" />
+        <ConnectionBanner />
         {state.status === "loading" ? (
           <LoadingBox label="Carregando oportunidade…" />
         ) : state.status === "error" ? (
@@ -33,7 +36,14 @@ export default function JobDetailScreen() {
             {state.error.kind === "not_found" ? <ExploreLink /> : null}
           </View>
         ) : (
-          <Detail job={state.data} />
+          <>
+            <StaleNotice
+              loadedAt={state.loadedAt}
+              refreshing={state.refreshing}
+              failed={state.refreshError !== null}
+            />
+            <Detail job={state.data} />
+          </>
         )}
       </ScrollView>
     </SafeAreaView>

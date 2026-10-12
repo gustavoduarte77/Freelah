@@ -1,6 +1,7 @@
 import {
   formatJobDate,
   formatPriceCents,
+  isRecoverableError,
   type Category,
   type JobSummary,
   type JobsApiError,
@@ -9,6 +10,7 @@ import {
 import { useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button, colors } from "../../components/ui";
+import { useRecovery } from "../recovery/RecoveryProvider";
 
 export const STATUS_LABEL: Record<PublicJobStatus, string> = {
   PUBLISHED: "Aceitando interessados",
@@ -75,7 +77,11 @@ export function LoadingBox({ label = "Carregando…" }: { label?: string }) {
   );
 }
 
-/** Erro de carregamento: sempre com mensagem clara e, quando faz sentido, "Tentar de novo". */
+/**
+ * Erro de carregamento. Falhas de conexão ou do servidor são recuperadas pelo aviso de conexão
+ * (um botão só para a tela inteira); aqui o botão só aparece para erros que exigem uma ação
+ * específica (pedido recusado ou resposta inválida). "Não encontrada" não tem nova tentativa.
+ */
 export function ErrorBox({
   error,
   onRetry,
@@ -83,14 +89,70 @@ export function ErrorBox({
   error: JobsApiError;
   onRetry?: () => void;
 }) {
+  const ownRetry = onRetry && error.kind !== "not_found" && !isRecoverableError(error);
   return (
     <View style={styles.errorBox} accessibilityRole="alert" accessibilityLiveRegion="assertive">
       <Text style={styles.errorTitle}>Não foi possível carregar</Text>
       <Text style={styles.errorText}>{error.message}</Text>
-      {onRetry && error.kind !== "not_found" ? (
-        <Button title="Tentar de novo" onPress={onRetry} />
-      ) : null}
+      {ownRetry ? <Button title="Tentar de novo" onPress={onRetry} /> : null}
     </View>
+  );
+}
+
+/** Hora local HH:MM de um instante em milissegundos. */
+export function formatClock(ms: number): string {
+  const date = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/**
+ * Aviso único de conexão da tela: aparece quando alguma consulta falhou por rede ou servidor.
+ * Mostra se o app está tentando reconectar sozinho e oferece UM botão para tentar de novo.
+ */
+export function ConnectionBanner() {
+  const { state, retryNow } = useRecovery();
+  if (!state.failed) return null;
+  const gaveUp = state.status === "gave_up";
+  return (
+    <View
+      style={styles.banner}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
+      testID="connection-banner"
+    >
+      <Text style={styles.bannerTitle}>Sem conexão com o servidor</Text>
+      <Text style={styles.bannerText}>
+        {gaveUp
+          ? "Não conseguimos reconectar. Verifique sua conexão; também tentamos de novo quando você voltar para esta tela."
+          : "Estamos tentando reconectar sozinhos. O que já estava na tela continua visível, mas pode estar desatualizado."}
+      </Text>
+      <Button title="Tentar de novo" onPress={retryNow} />
+    </View>
+  );
+}
+
+/** Dados antigos na tela: nunca aparecem como se estivessem atualizados. */
+export function StaleNotice({
+  loadedAt,
+  refreshing,
+  failed,
+}: {
+  loadedAt: number;
+  refreshing: boolean;
+  failed: boolean;
+}) {
+  if (!failed && !refreshing) return null;
+  return (
+    <Text
+      style={failed ? styles.staleFailed : styles.staleInfo}
+      accessibilityLiveRegion="polite"
+      testID="stale-notice"
+    >
+      {failed
+        ? `Não foi possível atualizar. Mostrando os dados de ${formatClock(loadedAt)}.`
+        : "Atualizando…"}
+    </Text>
   );
 }
 
@@ -181,6 +243,11 @@ const styles = StyleSheet.create({
   errorBox: { backgroundColor: "#FCE8E6", borderRadius: 12, padding: 16, gap: 10 },
   errorTitle: { fontSize: 16, fontWeight: "700", color: colors.error },
   errorText: { fontSize: 14, color: "#5C2420" },
+  banner: { backgroundColor: "#FFF4E5", borderRadius: 12, padding: 16, gap: 8 },
+  bannerTitle: { fontSize: 16, fontWeight: "700", color: "#7A4B00" },
+  bannerText: { fontSize: 14, color: "#5C3B00" },
+  staleFailed: { fontSize: 13, fontWeight: "600", color: "#7A4B00" },
+  staleInfo: { fontSize: 13, color: colors.muted },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     borderWidth: 1,

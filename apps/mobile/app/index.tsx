@@ -18,10 +18,12 @@ import { useSessionState } from "../src/features/auth/SessionState";
 import { useApiHealth } from "../src/features/health/useApiHealth";
 import {
   CategoryChips,
+  ConnectionBanner,
   EmptyBox,
   ErrorBox,
   JobCard,
   LoadingBox,
+  StaleNotice,
 } from "../src/features/jobs/components";
 import { useCategories, useJobsList } from "../src/features/jobs/hooks";
 import {
@@ -48,7 +50,8 @@ function knownPreferences(state: PreferencesSyncState): Preferences | null {
   }
 }
 
-const RECENT_LIMIT = 4;
+// Constante fora do componente: os mesmos filtros em toda renderização.
+const RECENT_PARAMS = { limit: 4 };
 
 // TEMPORÁRIO (junto com a linha de status das preferências abaixo).
 function describePreferencesSync(state: PreferencesSyncState): string {
@@ -80,7 +83,7 @@ function describePreferencesSync(state: PreferencesSyncState): string {
 }
 
 export default function Index() {
-  const { state, retry } = useApiHealth();
+  const { state } = useApiHealth();
   const router = useRouter();
   const { state: sessionState, recheck } = useSessionState();
   const session = sessionState.status === "authenticated" ? sessionState.session : null;
@@ -93,7 +96,7 @@ export default function Index() {
   const [signingOut, setSigningOut] = useState(false);
   const [search, setSearch] = useState("");
   const categories = useCategories();
-  const recent = useJobsList({ limit: RECENT_LIMIT });
+  const recent = useJobsList("home", RECENT_PARAMS);
 
   async function signOut() {
     setSigningOut(true);
@@ -160,6 +163,8 @@ export default function Index() {
           Encontre uma oportunidade ou alguém para seu serviço.
         </Text>
 
+        <ConnectionBanner />
+
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -191,21 +196,30 @@ export default function Index() {
           <LoadingBox label="Carregando oportunidades…" />
         ) : recent.state.status === "error" ? (
           <ErrorBox error={recent.state.error} onRetry={recent.retry} />
-        ) : recent.state.jobs.length === 0 ? (
-          <EmptyBox
-            title="Ainda não há oportunidades abertas"
-            text="Volte em breve: novas oportunidades aparecem aqui."
-          />
         ) : (
           <View style={styles.recent}>
-            {recent.state.jobs.map((job) => (
-              <JobCard key={job.id} job={job} />
-            ))}
-            <Button
-              title="Ver todas as oportunidades"
-              variant="link"
-              onPress={() => router.push("/explorar")}
+            <StaleNotice
+              loadedAt={recent.state.loadedAt}
+              refreshing={recent.state.refreshing}
+              failed={recent.state.refreshError !== null}
             />
+            {recent.state.jobs.length === 0 ? (
+              <EmptyBox
+                title="Ainda não há oportunidades abertas"
+                text="Volte em breve: novas oportunidades aparecem aqui."
+              />
+            ) : (
+              <>
+                {recent.state.jobs.map((job) => (
+                  <JobCard key={job.id} job={job} />
+                ))}
+                <Button
+                  title="Ver todas as oportunidades"
+                  variant="link"
+                  onPress={() => router.push("/explorar")}
+                />
+              </>
+            )}
           </View>
         )}
 
@@ -273,9 +287,6 @@ export default function Index() {
             <>
               <Text style={[styles.statusText, styles.error]}>● Offline</Text>
               <Text style={styles.hint}>{state.message}</Text>
-              <Pressable onPress={retry} style={styles.button} accessibilityRole="button">
-                <Text style={styles.buttonText}>Tentar novamente</Text>
-              </Pressable>
             </>
           )}
           <Text style={styles.hint}>{API_URL}</Text>

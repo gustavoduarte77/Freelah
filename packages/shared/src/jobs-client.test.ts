@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   JobsApiError,
+  attachToRecovery,
   createJobsApi,
   createJobsListController,
   createResourceController,
+  recoverableStatus,
   type JobsApi,
   type PublicFetch,
 } from "./jobs-client";
 import type { JobDetail, JobSummary, JobsResponse } from "./jobs";
+import { createRecoveryCoordinator } from "./recovery";
 
 const job = (id: string, overrides: Partial<JobSummary> = {}): JobSummary => ({
   id,
@@ -133,7 +136,7 @@ describe("createResourceController", () => {
     await settle();
     c.load();
     expect(load).toHaveBeenCalledTimes(1);
-    expect(c.getState()).toEqual({ status: "ready", data: [1, 2] });
+    expect(c.getState()).toMatchObject({ status: "ready", data: [1, 2], refreshing: false, refreshError: null });
   });
 
   it("erro é erro, e retry tenta de novo", async () => {
@@ -150,7 +153,7 @@ describe("createResourceController", () => {
     c.retry();
     expect(c.getState().status).toBe("loading");
     await settle();
-    expect(c.getState()).toEqual({ status: "ready", data: "ok" });
+    expect(c.getState()).toMatchObject({ status: "ready", data: "ok" });
   });
 
   it("erro que não é JobsApiError vira network", async () => {
@@ -175,7 +178,7 @@ describe("createResourceController", () => {
     c.retry();
     second.resolve("novo");
     await settle();
-    expect(c.getState()).toEqual({ status: "ready", data: "novo" });
+    expect(c.getState()).toMatchObject({ status: "ready", data: "novo" });
   });
 
   it("notifica quem assinou e para quando cancela", async () => {
@@ -376,5 +379,378 @@ describe("createJobsListController", () => {
     const state = controller.getState();
     expect(state).toMatchObject({ status: "ready", params: { q: "b" } });
     expect(state.status === "ready" && state.jobs.map((j) => j.id)).toEqual(["9"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dados preservados quando a atualização falha
+// ---------------------------------------------------------------------------
+
+describe("preservação dos dados já carregados", () => {
+  const clock = () => {
+    let t = 1000;
+    return { now: () => t, advance: (ms: number) => (t += ms) };
+  };
+
+  it("recurso: falha na atualização mantém os dados antigos, marcados como desatualizados", async () => {
+    const time = clock();
+    let fail = false;
+    const c = createResourceController(
+      async () => {
+        if (fail) throw new JobsApiError("network");
+        return ["a"];
+      },
+      { now: time.now, freshMs: 100 },
+    );
+    c.load();
+    await settle();
+    expect(c.getState()).toMatchObject({ status: "ready", data: ["a"], loadedAt: 1000, refreshError: null });
+    time.advance(500);
+    fail = true;
+    c.load(); // dados passaram de freshMs: atualiza em segundo plano
+    expect(c.getState()).toMatchObject({ status: "ready", data: ["a"], refreshing: true });
+    await settle();
+    const state = c.getState();
+    expect(state).toMatchObject({ status: "ready", data: ["a"], refreshing: false, loadedAt: 1000 });
+    expect(state.status === "ready" && state.refreshError?.kind).toBe("network");
+  });
+
+  it("recurso: depois da falha, retry atualiza, limpa o aviso e renova a hora", async () => {
+    const time = clock();
+    let fail = true;
+    const c = createResourceController(
+      async () => {
+        if (fail) throw new JobsApiError("server");
+        return ["novo"];
+      },
+      { now: time.now, freshMs: 0 },
+    );
+    c.load();
+    await settle();
+    expect(c.getState().status).toBe("error"); // nunca houve dados: erro, não lista vazia
+    fail = false;
+    c.retry();
+    await settle();
+    time.advance(10);
+    fail = true;
+    c.load();
+    await settle();
+    expect(c.getState()).toMatchObject({ status: "ready", data: ["novo"], refreshError: { kind: "server" } });
+    fail = false;
+    time.advance(77);
+    c.retry();
+    await settle();
+    expect(c.getState()).toMatchObject({ status: "ready", data: ["novo"], refreshError: null, loadedAt: 1087 });
+  });
+
+  it("recurso: dados recentes não geram requisição ao reabrir a tela", async () => {
+    const time = clock();
+    const loader = vi.fn(async () => 1);
+    const c = createResourceController(loader, { now: time.now, freshMs: 30_000 });
+    c.load();
+    await settle();
+    time.advance(29_000);
+    c.load();
+    await settle();
+    expect(loader).toHaveBeenCalledTimes(1);
+    time.advance(2_000);
+    c.load();
+    await settle();
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it("recurso: atualização em andamento não é duplicada", async () => {
+    const time = clock();
+    const gate = deferred<number>();
+    const loader = vi.fn().mockResolvedValueOnce(1).mockReturnValueOnce(gate.promise);
+    const c = createResourceController<number>(loader, { now: time.now, freshMs: 0 });
+    c.load();
+    await settle();
+    time.advance(1);
+    c.load();
+    c.load();
+    c.retry();
+    expect(loader).toHaveBeenCalledTimes(2);
+    gate.resolve(2);
+    await settle();
+    expect(c.getState()).toMatchObject({ data: 2 });
+  });
+
+  it("recurso: erro que não adianta repetir (404) fica como erro, sem sonda de recuperação", async () => {
+    const c = createResourceController(async () => {
+      throw new JobsApiError("not_found");
+    });
+    c.load();
+    await settle();
+    expect(recoverableStatus(c.getState())).toBe("ok");
+  });
+
+  it("lista: atualizar mantém a lista na tela e, se falhar, marca como desatualizada", async () => {
+    const time = clock();
+    let fail = false;
+    const fn = vi.fn(async (): Promise<JobsResponse> => {
+      if (fail) throw new JobsApiError("network");
+      return page(["1", "2"], "c");
+    });
+    const controller = createJobsListController({ api: { listJobs: fn }, now: time.now, freshMs: 100 });
+    controller.setParams({ q: "a" });
+    await settle();
+    time.advance(50);
+    fail = true;
+    controller.refresh();
+    expect(controller.getState()).toMatchObject({ status: "ready", refreshing: true });
+    await settle();
+    const state = controller.getState();
+    expect(state).toMatchObject({ status: "ready", refreshing: false, loadedAt: 1000, refreshError: { kind: "network" } });
+    expect(state.status === "ready" && state.jobs.map((j) => j.id)).toEqual(["1", "2"]);
+    expect(state.status === "ready" && state.nextCursor).toBe("c");
+  });
+
+  it("lista: retry depois da falha atualiza e limpa o aviso", async () => {
+    const time = clock();
+    let fail = true;
+    const fn = vi.fn(async (): Promise<JobsResponse> => {
+      if (fail) throw new JobsApiError("server");
+      return page(["9"]);
+    });
+    const controller = createJobsListController({ api: { listJobs: fn }, now: time.now });
+    controller.setParams({});
+    await settle();
+    expect(controller.getState().status).toBe("error"); // sem dados anteriores: erro
+    fail = false;
+    controller.retry();
+    await settle();
+    expect(controller.getState()).toMatchObject({ status: "ready", refreshError: null });
+    time.advance(1000);
+    fail = true;
+    controller.refresh();
+    await settle();
+    fail = false;
+    controller.retry();
+    await settle();
+    const state = controller.getState();
+    expect(state).toMatchObject({ status: "ready", refreshError: null, loadedAt: 2000 });
+    expect(state.status === "ready" && state.jobs.map((j) => j.id)).toEqual(["9"]);
+  });
+
+  it("lista: mesmos filtros e dados recentes não refazem a requisição; dados velhos atualizam em segundo plano", async () => {
+    const time = clock();
+    const fn = vi.fn(async (): Promise<JobsResponse> => page(["1"]));
+    const controller = createJobsListController({ api: { listJobs: fn }, now: time.now, freshMs: 1000 });
+    controller.setParams({ q: "x" });
+    await settle();
+    controller.setParams({ q: "x" });
+    expect(fn).toHaveBeenCalledTimes(1);
+    time.advance(2000);
+    controller.setParams({ q: "x" });
+    expect(controller.getState()).toMatchObject({ status: "ready", refreshing: true }); // lista continua na tela
+    await settle();
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("lista: filtros diferentes não mostram a lista dos filtros anteriores", async () => {
+    const gate = deferred<JobsResponse>();
+    const fn = vi.fn<JobsApi["listJobs"]>().mockResolvedValueOnce(page(["1"])).mockReturnValueOnce(gate.promise);
+    const controller = createJobsListController({ api: { listJobs: fn } });
+    controller.setParams({ q: "a" });
+    await settle();
+    controller.setParams({ q: "b" });
+    expect(controller.getState()).toMatchObject({ status: "loading", params: { q: "b" } });
+  });
+
+  it("lista: falha ao carregar mais não derruba a lista nem conta como atualização falha", async () => {
+    let fail = false;
+    const fn = vi.fn(async (params: { cursor?: string }): Promise<JobsResponse> => {
+      if (params.cursor && fail) throw new JobsApiError("network");
+      return params.cursor ? page(["2"]) : page(["1"], "c");
+    });
+    const controller = createJobsListController({ api: { listJobs: fn } });
+    controller.setParams({});
+    await settle();
+    fail = true;
+    controller.loadMore();
+    await settle();
+    expect(controller.getState()).toMatchObject({ status: "ready", loadMoreError: { kind: "network" }, refreshError: null });
+    expect(recoverableStatus(controller.getState())).toBe("failed");
+    fail = false;
+    controller.retry();
+    await settle();
+    expect(recoverableStatus(controller.getState())).toBe("ok");
+  });
+
+  it("lista: atualizar durante o carregamento de mais descarta a página antiga e não duplica", async () => {
+    const more = deferred<JobsResponse>();
+    const fn = vi
+      .fn<JobsApi["listJobs"]>()
+      .mockResolvedValueOnce(page(["1"], "c1"))
+      .mockReturnValueOnce(more.promise)
+      .mockResolvedValueOnce(page(["1", "2"]));
+    const controller = createJobsListController({ api: { listJobs: fn } });
+    controller.setParams({});
+    await settle();
+    controller.loadMore();
+    controller.refresh();
+    more.resolve(page(["9"]));
+    await settle();
+    const state = controller.getState();
+    expect(state.status === "ready" && state.jobs.map((j) => j.id)).toEqual(["1", "2"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ligação dos controladores com o coordenador de recuperação
+// ---------------------------------------------------------------------------
+
+describe("recuperação coordenada de várias consultas", () => {
+  function coordinatorWith(healthy: () => boolean) {
+    let nextId = 0;
+    const timers = new Map<number, () => void>();
+    const coordinator = createRecoveryCoordinator({
+      delaysMs: [1000, 2000],
+      minNudgeIntervalMs: 0,
+      setTimer: (fn) => {
+        const id = nextId++;
+        timers.set(id, fn);
+        return () => timers.delete(id);
+      },
+      probe: async () => healthy(),
+    });
+    const fire = async () => {
+      for (const [id, fn] of [...timers]) {
+        timers.delete(id);
+        fn();
+      }
+      await settle();
+    };
+    return { coordinator, fire, timers };
+  }
+
+  it("queda e volta da API: categorias, lista e detalhe se recuperam juntos, cada um com UMA requisição", async () => {
+    let apiUp = false;
+    const calls = { categories: 0, jobs: 0, detail: 0 };
+    const api: JobsApi = {
+      async listCategories() {
+        calls.categories++;
+        if (!apiUp) throw new JobsApiError("network");
+        return [{ id: "1", slug: "a", name: "A" }];
+      },
+      async listJobs() {
+        calls.jobs++;
+        if (!apiUp) throw new JobsApiError("network");
+        return page(["1"]);
+      },
+      async getJob() {
+        calls.detail++;
+        if (!apiUp) throw new JobsApiError("server");
+        throw new JobsApiError("not_found"); // só para ter um terceiro recurso
+      },
+    };
+    const { coordinator, fire } = coordinatorWith(() => apiUp);
+    const categories = createResourceController(() => api.listCategories());
+    const list = createJobsListController({ api });
+    const detail = createResourceController(() => api.getJob("x"));
+    attachToRecovery(coordinator, categories);
+    attachToRecovery(coordinator, list);
+    attachToRecovery(coordinator, detail);
+    categories.load();
+    list.setParams({});
+    detail.load();
+    await settle();
+    expect([categories, list, detail].map((c) => c.getState().status)).toEqual(["error", "error", "error"]);
+    expect(coordinator.getState()).toMatchObject({ status: "waiting", failed: true });
+
+    await fire(); // API ainda fora: nenhuma consulta é refeita, só a sonda
+    expect(calls).toEqual({ categories: 1, jobs: 1, detail: 1 });
+
+    apiUp = true;
+    await fire();
+    expect(calls).toEqual({ categories: 2, jobs: 2, detail: 2 });
+    expect(categories.getState().status).toBe("ready");
+    expect(list.getState().status).toBe("ready");
+    expect(detail.getState()).toMatchObject({ status: "error", error: { kind: "not_found" } }); // não adianta repetir
+    expect(coordinator.getState().status).toBe("idle");
+    await fire();
+    expect(calls).toEqual({ categories: 2, jobs: 2, detail: 2 }); // nada mais acontece
+  });
+
+  it("dados antigos preservados durante a queda e atualizados quando a API volta", async () => {
+    let apiUp = true;
+    let version = 1;
+    const api = {
+      async listJobs(): Promise<JobsResponse> {
+        if (!apiUp) throw new JobsApiError("network");
+        return page([`v${version}`]);
+      },
+    };
+    const { coordinator, fire } = coordinatorWith(() => apiUp);
+    const list = createJobsListController({ api, freshMs: 0 });
+    attachToRecovery(coordinator, list);
+    list.setParams({});
+    await settle();
+    apiUp = false;
+    version = 2;
+    list.refresh();
+    await settle();
+    const down = list.getState();
+    expect(down.status === "ready" && down.jobs.map((j) => j.id)).toEqual(["v1"]);
+    expect(down).toMatchObject({ refreshError: { kind: "network" } });
+    apiUp = true;
+    await fire();
+    const up = list.getState();
+    expect(up.status === "ready" && up.jobs.map((j) => j.id)).toEqual(["v2"]);
+    expect(up).toMatchObject({ refreshError: null });
+  });
+
+  it("erro 5xx persistente nas consultas: número limitado de rodadas, sem laço", async () => {
+    const api = {
+      calls: 0,
+      async listJobs(): Promise<JobsResponse> {
+        this.calls++;
+        throw new JobsApiError("server");
+      },
+    };
+    const { coordinator, fire, timers } = coordinatorWith(() => true); // /health responde, rotas de dados dão 500
+    const list = createJobsListController({ api });
+    attachToRecovery(coordinator, list);
+    list.setParams({});
+    await settle();
+    for (let i = 0; i < 30; i++) await fire();
+    expect(api.calls).toBeLessThanOrEqual(1 + 3); // a carga inicial + no máximo 3 rodadas
+    expect(coordinator.getState().status).toBe("gave_up");
+    expect(timers.size).toBe(0);
+  });
+
+  it("depois que a pessoa volta à aba (foco) e a API voltou, recupera mesmo depois de desistir", async () => {
+    let apiUp = false;
+    const api = {
+      async listJobs(): Promise<JobsResponse> {
+        if (!apiUp) throw new JobsApiError("network");
+        return page(["1"]);
+      },
+    };
+    const { coordinator, fire } = coordinatorWith(() => apiUp);
+    const list = createJobsListController({ api });
+    attachToRecovery(coordinator, list);
+    list.setParams({});
+    await settle();
+    for (let i = 0; i < 6; i++) await fire();
+    expect(coordinator.getState().status).toBe("gave_up");
+    apiUp = true;
+    coordinator.nudge();
+    await settle();
+    expect(list.getState().status).toBe("ready");
+  });
+
+  it("desfazer a ligação tira o controlador do coordenador", async () => {
+    const api = { listJobs: async (): Promise<JobsResponse> => { throw new JobsApiError("network"); } };
+    const { coordinator, timers } = coordinatorWith(() => false);
+    const list = createJobsListController({ api });
+    const detach = attachToRecovery(coordinator, list);
+    list.setParams({});
+    await settle();
+    expect(timers.size).toBe(1);
+    detach();
+    expect(coordinator.getState()).toMatchObject({ status: "idle", failed: false });
+    expect(timers.size).toBe(0);
   });
 });
