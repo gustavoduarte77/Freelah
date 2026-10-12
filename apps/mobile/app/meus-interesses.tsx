@@ -13,6 +13,7 @@ import { Button, colors } from "../src/components/ui";
 import { useSessionState } from "../src/features/auth/SessionState";
 import { BackLink } from "../src/features/jobs/BackLink";
 import { EmptyBox, LoadingBox, StatusBadge } from "../src/features/jobs/components";
+import { useOpenChat } from "../src/features/chat/useOpenChat";
 import { myJobsApi } from "../src/features/publish/api";
 
 type ListState =
@@ -148,6 +149,7 @@ function InterestCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { job } = interest;
+  const chat = useOpenChat();
 
   async function withdraw() {
     if (busy) return;
@@ -196,6 +198,14 @@ function InterestCard({
         variant="link"
         onPress={() => router.push({ pathname: "/oportunidades/[id]", params: { id: job.id } })}
       />
+      {interest.status === "PENDING" || interest.status === "ACCEPTED" ? (
+        <Button title="Conversar" variant="link" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
+      ) : null}
+      {chat.error ? (
+        <Text style={styles.errorText} accessibilityRole="alert" testID="chat-open-error">
+          {chat.error}
+        </Text>
+      ) : null}
       {interest.status === "PENDING" ? (
         <Button title="Retirar interesse" variant="link" onPress={() => void withdraw()} loading={busy} disabled={busy} />
       ) : null}

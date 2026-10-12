@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Button, colors } from "../../components/ui";
 import { LoadingBox } from "../jobs/components";
+import { useOpenChat } from "../chat/useOpenChat";
 import { myJobsApi } from "../publish/api";
 
 type ViewerState =
@@ -28,6 +29,7 @@ export function InterestAction({ jobId }: { jobId: string }) {
   const [viewer, setViewer] = useState<ViewerState>({ status: "loading" });
   const [action, setAction] = useState<Action>({ kind: "idle" });
   const inFlight = useRef(false);
+  const chat = useOpenChat();
 
   useEffect(() => {
     let active = true;
@@ -131,6 +133,14 @@ export function InterestAction({ jobId }: { jobId: string }) {
           <Text style={styles.success} accessibilityLiveRegion="polite" testID="interest-registered">
             {INTEREST_STATUS_LABEL[interest.status]}
           </Text>
+          {interest.status === "PENDING" || interest.status === "ACCEPTED" ? (
+            <Button title="Conversar com o contratante" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
+          ) : null}
+          {chat.error ? (
+            <Text style={styles.errorText} accessibilityRole="alert" testID="chat-open-error">
+              {chat.error}
+            </Text>
+          ) : null}
           {interest.status === "PENDING" ? (
             <Button title="Retirar interesse" variant="link" onPress={() => void run(() => myJobsApi.withdrawInterest(interest.id))} loading={busy} disabled={busy} />
           ) : null}

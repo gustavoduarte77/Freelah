@@ -1,5 +1,16 @@
 import { z } from "zod";
 import {
+  chatMessagesResponseSchema,
+  conversationListResponseSchema,
+  conversationResponseSchema,
+  openConversationResponseSchema,
+  sendMessageResponseSchema,
+  type ChatMessage,
+  type ChatMessagesResponse,
+  type Conversation,
+  type ConversationListItem,
+} from "./chat";
+import {
   interestResponseSchema,
   jobInterestsResponseSchema,
   jobViewerResponseSchema,
@@ -125,6 +136,15 @@ export interface MyJobsApi {
   myInterests(): Promise<MyInterest[]>;
   /** Quem demonstrou interesse na minha oportunidade (só a dona vê). */
   jobInterests(jobId: string): Promise<JobInterest[]>;
+
+  // --- Chat (PRD 18) ---
+  /** Abre (ou cria, uma única vez) a conversa de um interesse. Devolve o id da conversa. */
+  openConversation(interestId: string): Promise<string>;
+  conversations(): Promise<ConversationListItem[]>;
+  conversation(id: string): Promise<Conversation>;
+  /** Mensagens da conversa; com `after` (marcador da última vista) devolve só as novas. */
+  messages(id: string, after?: string | null): Promise<ChatMessagesResponse>;
+  sendMessage(id: string, content: string): Promise<ChatMessage>;
 }
 
 const errorBodySchema = z.object({
@@ -255,6 +275,34 @@ export function createMyJobsApi(options: { baseUrl: string; fetch: MyJobsFetch }
         (json) => jobInterestsResponseSchema.safeParse(json),
       );
       return result.interests;
+    },
+    async openConversation(interestId) {
+      const result = await request(`${root}/me/interests/${encodeURIComponent(interestId)}/conversation`, "POST", {}, (json) =>
+        openConversationResponseSchema.safeParse(json),
+      );
+      return result.conversation.id;
+    },
+    async conversations() {
+      const result = await request(`${root}/me/conversations`, "GET", undefined, (json) => conversationListResponseSchema.safeParse(json));
+      return result.conversations;
+    },
+    async conversation(id) {
+      const result = await request(`${root}/me/conversations/${encodeURIComponent(id)}`, "GET", undefined, (json) =>
+        conversationResponseSchema.safeParse(json),
+      );
+      return result.conversation;
+    },
+    messages(id, after) {
+      const query = after ? `?after=${encodeURIComponent(after)}` : "";
+      return request(`${root}/me/conversations/${encodeURIComponent(id)}/messages${query}`, "GET", undefined, (json) =>
+        chatMessagesResponseSchema.safeParse(json),
+      );
+    },
+    async sendMessage(id, content) {
+      const result = await request(`${root}/me/conversations/${encodeURIComponent(id)}/messages`, "POST", { content }, (json) =>
+        sendMessageResponseSchema.safeParse(json),
+      );
+      return result.message;
     },
     cancel(id) {
       return call("POST", `/${encodeURIComponent(id)}/cancel`, {}, one);

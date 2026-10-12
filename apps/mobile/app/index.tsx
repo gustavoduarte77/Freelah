@@ -150,6 +150,9 @@ export default function Index() {
           onPress={() => router.push("/meus-interesses" as Href)}
         />
       ) : null}
+      {session ? (
+        <Button title="Mensagens" variant="link" onPress={() => router.push("/mensagens" as Href)} />
+      ) : null}
     </View>
   );
   const publish = (

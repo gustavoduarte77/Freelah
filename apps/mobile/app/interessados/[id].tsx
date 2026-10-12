@@ -12,6 +12,7 @@ import { Button, colors } from "../../src/components/ui";
 import { useSessionState } from "../../src/features/auth/SessionState";
 import { BackLink } from "../../src/features/jobs/BackLink";
 import { EmptyBox, LoadingBox } from "../../src/features/jobs/components";
+import { useOpenChat } from "../../src/features/chat/useOpenChat";
 import { myJobsApi } from "../../src/features/publish/api";
 
 type State =
@@ -107,16 +108,29 @@ function InterestedList({ jobId }: { jobId: string }) {
       {state.interests.length === 0 ? (
         <EmptyBox title="Ninguém demonstrou interesse ainda" text="Quando alguém demonstrar, aparece aqui." />
       ) : (
-        state.interests.map((interest) => (
-          <View key={interest.id} style={styles.card} testID="interested">
-            <Text style={styles.name}>{interest.worker.name}</Text>
-            <Text style={styles.meta}>
-              {interest.worker.city} · demonstrou interesse em {brDate(interest.createdAt)}
-            </Text>
-            <Text style={styles.status}>{INTEREST_STATUS_LABEL[interest.status]}</Text>
-          </View>
-        ))
+        state.interests.map((interest) => <InterestedCard key={interest.id} interest={interest} />)
       )}
+    </View>
+  );
+}
+
+function InterestedCard({ interest }: { interest: JobInterest }) {
+  const chat = useOpenChat();
+  return (
+    <View style={styles.card} testID="interested">
+      <Text style={styles.name}>{interest.worker.name}</Text>
+      <Text style={styles.meta}>
+        {interest.worker.city} · demonstrou interesse em {brDate(interest.createdAt)}
+      </Text>
+      <Text style={styles.status}>{INTEREST_STATUS_LABEL[interest.status]}</Text>
+      {interest.status === "PENDING" || interest.status === "ACCEPTED" ? (
+        <Button title="Conversar" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
+      ) : null}
+      {chat.error ? (
+        <Text style={styles.errorText} accessibilityRole="alert" testID="chat-open-error">
+          {chat.error}
+        </Text>
+      ) : null}
     </View>
   );
 }

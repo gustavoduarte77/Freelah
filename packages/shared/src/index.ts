@@ -11,6 +11,7 @@ export * from "./session-state";
 export * from "./recovery";
 export * from "./jobs-write";
 export * from "./interests";
+export * from "./chat";
 export * from "./my-jobs-api";
 export * from "./job-form";
 export * from "./publish-submission";
