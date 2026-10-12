@@ -18,6 +18,7 @@ import {
 import { Router, type Response } from "express";
 import type { Auth } from "../auth";
 import type { PrismaClient } from "../db";
+import { expireOverdueJobs } from "../expiry";
 import { getSession, requireAuth } from "../middleware/require-auth";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -181,8 +182,14 @@ export function createMyJobsRouter(
   // ------------------------------------------------------------------ ler
   router.get("/me/jobs", async (_req, res, next) => {
     try {
+      const ownerId = getSession(res).user.id;
+      // Deixa o banco igual ao que a pessoa vai ver. Se falhar, a lista sai mesmo assim: o estado
+      // "expirada" também é calculado na leitura (toOwnJob).
+      await expireOverdueJobs(prisma, now(), ownerId).catch((error: unknown) => {
+        console.error("Falha ao marcar oportunidades expiradas:", error);
+      });
       const rows = await prisma.job.findMany({
-        where: { ownerId: getSession(res).user.id },
+        where: { ownerId },
         select: ownSelect,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: MY_JOBS_LIMIT,
