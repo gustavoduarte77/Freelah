@@ -1,5 +1,6 @@
 import { formatJobDate, formatPriceCents, type JobDetail } from "@freelah/shared";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, colors } from "../../src/components/ui";
@@ -59,6 +60,12 @@ function ExploreLink() {
 function Detail({ job }: { job: JobDetail }) {
   const router = useRouter();
   const { state: sessionState, recheck } = useSessionState();
+  // null = ainda não sabemos se quem vê é a dona.
+  const [isOwner, setIsOwner] = useState<boolean | null>(null);
+  // O aviso de negociação é para quem procura trabalho: some para a dona e, com sessão, só aparece
+  // depois de confirmado que não é a dona (sem piscar). Os avisos de cancelada/expirada ficam sempre.
+  const hideNotice =
+    job.status === "NEGOTIATING" && (isOwner === true || (sessionState.status === "authenticated" && isOwner === null));
 
   return (
     <View style={styles.card}>
@@ -71,7 +78,7 @@ function Detail({ job }: { job: JobDetail }) {
         {job.title}
       </Text>
 
-      {job.statusMessage ? (
+      {job.statusMessage && !hideNotice ? (
         <View
           style={[styles.notice, job.acceptingInterests ? styles.noticeInfo : styles.noticeClosed]}
           accessibilityRole="alert"
@@ -110,7 +117,7 @@ function Detail({ job }: { job: JobDetail }) {
 
       <View style={styles.action}>
         {sessionState.status === "authenticated" ? (
-          <InterestAction jobId={job.id} accepting={job.acceptingInterests} />
+          <InterestAction jobId={job.id} accepting={job.acceptingInterests} onViewer={(viewer) => setIsOwner(viewer.isOwner)} />
         ) : !job.acceptingInterests ? (
           <Button title="Não aceita novos interessados" disabled onPress={() => undefined} />
         ) : sessionState.status === "loading" ? (

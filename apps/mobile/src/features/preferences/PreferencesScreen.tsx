@@ -74,7 +74,7 @@ export function OnboardingScreen(props: OnboardingProps) {
         Como você quer usar o Freelah?
       </Text>
       <Text style={styles.body}>
-        Escolha uma ou as duas opções. Você poderá mudar isso depois nas configurações.
+        Escolha uma ou as duas opções.
       </Text>
 
       {OPTIONS.map((option) => {

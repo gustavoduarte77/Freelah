@@ -72,13 +72,15 @@ export const DEMO_WORKER: DemoOwner = {
 };
 
 const jobId = (n: number) => `01990000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+const EXPIRED_DEMO_JOB_ID = jobId(12);
 export const DEMO_HIRED_INTEREST_ID = "01990000-0000-7000-8000-00000000a001";
 
 export function buildDemoJobs(now: Date): DemoJob[] {
   const at = (offsetMs: number) => new Date(now.getTime() + offsetMs);
   /** Data do serviço: só o dia, no futuro. */
   const day = (days: number) => new Date(`${at(days * DAY).toISOString().slice(0, 10)}T00:00:00Z`);
-  const open = { expiresAt: at(25 * DAY) };
+  // Placeholder: o prazo real de cada oportunidade é calculado no fim, a partir da data do serviço.
+  const open = { expiresAt: at(0) };
 
   const jobs: DemoJob[] = [
     {
@@ -332,7 +334,14 @@ export function buildDemoJobs(now: Date): DemoJob[] {
       expiresAt: at(30 * DAY),
     },
   ];
-  return jobs;
+  // O prazo de publicação vem antes do serviço (regra do produto): 12 h antes do horário marcado
+  // (horário de Brasília, UTC-3). A oportunidade de prazo encerrado fica como está de propósito.
+  return jobs.map((job) => {
+    if (job.id === EXPIRED_DEMO_JOB_ID) return job;
+    const [hours, minutes] = job.startTime.split(":").map(Number);
+    const service = job.scheduledDate.getTime() + ((hours! + 3) * 60 + minutes!) * 60 * 1000;
+    return { ...job, expiresAt: new Date(service - 12 * HOUR) };
+  });
 }
 
 /** Quantas oportunidades aparecem na exploração depois do seed (as 10 primeiras). */

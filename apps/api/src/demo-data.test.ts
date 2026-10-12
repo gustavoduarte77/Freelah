@@ -46,12 +46,24 @@ describe("dados de demonstração", () => {
     expect(hidden.find((j) => j.status === "HIRED")?.hiredWorkerId).toBe(DEMO_WORKER.id);
   });
 
+  it("o prazo de publicação vem antes do serviço, exceto na oportunidade de prazo encerrado", () => {
+    for (const job of jobs) {
+      const [hours, minutes] = job.startTime.split(":").map(Number);
+      const service = job.scheduledDate.getTime() + ((hours! + 3) * 60 + minutes!) * 60 * 1000;
+      if (job.title.includes("prazo encerrado")) {
+        expect(job.expiresAt <= NOW).toBe(true);
+      } else {
+        expect(job.expiresAt.getTime()).toBeLessThan(service);
+        expect(job.expiresAt > NOW).toBe(true);
+      }
+    }
+  });
+
   it("as datas acompanham o momento da execução (não envelhecem)", () => {
     const later = buildDemoJobs(new Date("2027-01-01T00:00:00Z"));
     const first = jobs[0]!;
     const same = later.find((j) => j.id === first.id)!;
-    expect(same.expiresAt.getTime() - first.expiresAt.getTime()).toBe(
-      new Date("2027-01-01T00:00:00Z").getTime() - NOW.getTime(),
-    );
+    expect(same.scheduledDate.getTime()).toBeGreaterThan(first.scheduledDate.getTime());
+    expect(same.expiresAt.getTime()).toBeGreaterThan(first.expiresAt.getTime());
   });
 });

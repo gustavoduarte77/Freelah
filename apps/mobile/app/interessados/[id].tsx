@@ -1,5 +1,4 @@
 import {
-  INTEREST_STATUS_LABEL,
   type JobInterest,
   type MyJobsApiError,
   type OwnJob,
@@ -19,6 +18,14 @@ type State =
   | { status: "loading" }
   | { status: "ready"; job: OwnJob; interests: JobInterest[] }
   | { status: "error"; error: MyJobsApiError };
+
+/** Situação de cada pessoa na ótica da contratante (o trabalhador vê outros rótulos em suas telas). */
+const OWNER_INTEREST_LABEL: Record<JobInterest["status"], string> = {
+  PENDING: "Interessado",
+  ACCEPTED: "Selecionado",
+  REJECTED: "Não selecionado",
+  WITHDRAWN: "Interesse retirado",
+};
 
 const brDate = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
@@ -172,9 +179,9 @@ function InterestedCard({
       <Text style={styles.meta}>
         {interest.worker.city} · demonstrou interesse em {brDate(interest.createdAt)}
       </Text>
-      <Text style={styles.status}>{INTEREST_STATUS_LABEL[interest.status]}</Text>
+      <Text style={styles.status}>{OWNER_INTEREST_LABEL[interest.status]}</Text>
       {interest.status === "PENDING" || interest.status === "ACCEPTED" ? (
-        <Button title="Conversar" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
+        <Button title="Conversar" variant="link" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
       ) : null}
       {chat.error ? (
         <Text style={styles.errorText} accessibilityRole="alert" testID="chat-open-error">
@@ -196,7 +203,7 @@ function InterestedCard({
             <Button title="Voltar" variant="link" onPress={() => setConfirming(false)} disabled={busy} />
           </View>
         ) : (
-          <Button title="Selecionar" variant="link" onPress={() => setConfirming(true)} />
+          <Button title="Selecionar" onPress={() => setConfirming(true)} />
         )
       ) : null}
     </View>

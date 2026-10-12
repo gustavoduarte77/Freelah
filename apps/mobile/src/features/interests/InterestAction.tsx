@@ -24,7 +24,16 @@ const UNCONFIRMED = "Não conseguimos confirmar o que aconteceu. Confira o estad
  * registrado e retirá-lo; a dona vê o atalho para os interessados. O estado só muda com a resposta
  * da API; sem resposta confiável a pessoa confere o estado atual (nada é reenviado sozinho).
  */
-export function InterestAction({ jobId, accepting = true }: { jobId: string; accepting?: boolean }) {
+export function InterestAction({
+  jobId,
+  accepting = true,
+  onViewer,
+}: {
+  jobId: string;
+  accepting?: boolean;
+  /** Avisa a tela quando a relação com a oportunidade é conhecida (ex.: para saber se é a dona). */
+  onViewer?: (viewer: JobViewerResponse) => void;
+}) {
   const router = useRouter();
   const [viewer, setViewer] = useState<ViewerState>({ status: "loading" });
   const [action, setAction] = useState<Action>({ kind: "idle" });
@@ -41,6 +50,10 @@ export function InterestAction({ jobId, accepting = true }: { jobId: string; acc
       active = false;
     };
   }, [jobId]);
+
+  useEffect(() => {
+    if (viewer.status === "ready") onViewer?.(viewer.viewer);
+  }, [viewer, onViewer]);
 
   /** Lê de novo a relação com a oportunidade (conferir o estado atual). */
   async function refresh() {
