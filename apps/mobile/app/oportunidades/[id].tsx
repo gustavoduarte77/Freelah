@@ -12,7 +12,7 @@ import {
   formatLocalDate,
 } from "../../src/features/jobs/components";
 import { useJobDetail } from "../../src/features/jobs/hooks";
-import { authClient } from "../../src/lib/auth-client";
+import { useSessionState } from "../../src/features/auth/SessionState";
 
 /** Detalhes da oportunidade (PRD 13.4 e 29.4): público; o interesse exige login. */
 export default function JobDetailScreen() {
@@ -47,7 +47,7 @@ function ExploreLink() {
 
 function Detail({ job }: { job: JobDetail }) {
   const router = useRouter();
-  const { data: session, isPending } = authClient.useSession();
+  const { state: sessionState, recheck } = useSessionState();
 
   return (
     <View style={styles.card}>
@@ -100,9 +100,18 @@ function Detail({ job }: { job: JobDetail }) {
       <View style={styles.action}>
         {!job.acceptingInterests ? (
           <Button title="Não aceita novos interessados" disabled onPress={() => undefined} />
-        ) : isPending ? (
+        ) : sessionState.status === "loading" ? (
           <LoadingBox />
-        ) : session ? (
+        ) : sessionState.status === "unknown" ? (
+          <>
+            <Button title="Tenho interesse" disabled onPress={() => undefined} />
+            <Text style={styles.hint}>
+              Não foi possível verificar sua sessão agora, então não sabemos se você já entrou.
+              Vamos tentar de novo sozinhos.
+            </Text>
+            <Button title="Verificar de novo" variant="link" onPress={recheck} />
+          </>
+        ) : sessionState.status === "authenticated" ? (
           <>
             <Button title="Tenho interesse" disabled onPress={() => undefined} />
             <Text style={styles.hint}>

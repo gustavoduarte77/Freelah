@@ -1,4 +1,4 @@
-import { parseReaisToCents, type JobsListParams } from "@freelah/shared";
+import { validatePriceRange, type JobsListParams } from "@freelah/shared";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { FlatList, StyleSheet, Text, TextInput, View } from "react-native";
@@ -28,25 +28,22 @@ export default function ExploreScreen() {
   const [maxText, setMaxText] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  const minCents = minText.trim() ? parseReaisToCents(minText) : undefined;
-  const maxCents = maxText.trim() ? parseReaisToCents(maxText) : undefined;
-  const minError = minText.trim() && minCents === null ? "Digite um valor em reais, como 50 ou 50,00." : undefined;
-  const maxError = maxText.trim() && maxCents === null ? "Digite um valor em reais, como 200 ou 200,00." : undefined;
-  const rangeError =
-    typeof minCents === "number" && typeof maxCents === "number" && minCents > maxCents
-      ? "O valor mínimo não pode ser maior que o máximo."
-      : undefined;
+  const price = useMemo(() => validatePriceRange(minText, maxText), [minText, maxText]);
 
-  // Valores inválidos nunca são enviados: a tela explica o problema em vez de buscar errado.
-  const params = useMemo<JobsListParams>(
-    () => ({
-      q: query.trim() || undefined,
-      category: category ?? undefined,
-      city: city.trim() || undefined,
-      minPriceCents: rangeError ? undefined : (minCents ?? undefined),
-      maxPriceCents: rangeError ? undefined : (maxCents ?? undefined),
-    }),
-    [query, category, city, minCents, maxCents, rangeError],
+  // Faixa de valor inválida (campo ilegível ou mínimo maior que o máximo): nada é consultado e a
+  // lista não é exibida como se o filtro tivesse sido aplicado; a tela explica o que corrigir.
+  const params = useMemo<JobsListParams | null>(
+    () =>
+      price.valid
+        ? {
+            q: query.trim() || undefined,
+            category: category ?? undefined,
+            city: city.trim() || undefined,
+            minPriceCents: price.minPriceCents,
+            maxPriceCents: price.maxPriceCents,
+          }
+        : null,
+    [query, category, city, price],
   );
   const stable = useDebounced(params, DEBOUNCE_MS);
   const { state, loadMore, retry, refresh } = useJobsList(stable);
@@ -102,20 +99,20 @@ export default function ExploreScreen() {
             label="Valor mínimo (R$)"
             value={minText}
             onChangeText={setMinText}
-            error={minError || rangeError}
+            error={price.minError ?? price.rangeError}
             keyboardType="numeric"
           />
           <TextField
             label="Valor máximo (R$)"
             value={maxText}
             onChangeText={setMaxText}
-            error={maxError}
+            error={price.maxError}
             keyboardType="numeric"
           />
         </View>
       ) : null}
 
-      {state.status === "ready" ? (
+      {price.valid && state.status === "ready" ? (
         <Text style={styles.count} accessibilityLiveRegion="polite">
           {state.jobs.length === 0
             ? "Nenhum resultado"
@@ -125,7 +122,7 @@ export default function ExploreScreen() {
     </View>
   );
 
-  const jobs = state.status === "ready" ? state.jobs : [];
+  const jobs = price.valid && state.status === "ready" ? state.jobs : [];
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -143,7 +140,17 @@ export default function ExploreScreen() {
         onRefresh={refresh}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          state.status === "loading" ? (
+          !price.valid ? (
+            <View style={styles.invalidRange} accessibilityRole="alert" accessibilityLiveRegion="assertive">
+              <Text style={styles.invalidTitle}>Corrija a faixa de valor</Text>
+              <Text style={styles.invalidText}>
+                {price.rangeError ?? price.minError ?? price.maxError}
+              </Text>
+              <Text style={styles.invalidText}>
+                Os resultados voltam assim que os valores estiverem corretos.
+              </Text>
+            </View>
+          ) : state.status === "loading" ? (
             <LoadingBox label="Buscando oportunidades…" />
           ) : state.status === "error" ? (
             <ErrorBox error={state.error} onRetry={retry} />
@@ -162,7 +169,7 @@ export default function ExploreScreen() {
           )
         }
         ListFooterComponent={
-          state.status === "ready" ? (
+          price.valid && state.status === "ready" ? (
             <View style={styles.footer}>
               {state.loadMoreError ? <ErrorBox error={state.loadMoreError} onRetry={retry} /> : null}
               {state.loadingMore ? <LoadingBox label="Carregando mais…" /> : null}
@@ -204,4 +211,7 @@ const styles = StyleSheet.create({
   gap: { height: 12 },
   emptyWrap: { alignItems: "center" },
   footer: { marginTop: 12, gap: 8 },
+  invalidRange: { backgroundColor: "#FCE8E6", borderRadius: 12, padding: 16, gap: 6 },
+  invalidTitle: { fontSize: 16, fontWeight: "700", color: colors.error },
+  invalidText: { fontSize: 14, color: "#5C2420" },
 });

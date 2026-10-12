@@ -241,3 +241,46 @@ export function parseReaisToCents(input: string): number | null {
   const [whole, fraction = ""] = text.replace(",", ".").split(".");
   return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
 }
+
+// ---------------------------------------------------------------------------
+// Faixa de valor digitada nos filtros (em reais): validada antes de consultar
+// ---------------------------------------------------------------------------
+
+export interface PriceRangeValidation {
+  /** Limites em centavos, só quando o texto correspondente é válido. */
+  minPriceCents?: number;
+  maxPriceCents?: number;
+  minError?: string;
+  maxError?: string;
+  /** Mínimo maior que o máximo. */
+  rangeError?: string;
+  /** `true` só se a faixa pode ser enviada à API (campos vazios também são válidos). */
+  valid: boolean;
+}
+
+export const MIN_PRICE_FORMAT_MESSAGE = "Digite um valor em reais, como 50 ou 50,00.";
+export const MAX_PRICE_FORMAT_MESSAGE = "Digite um valor em reais, como 200 ou 200,00.";
+export const PRICE_RANGE_MESSAGE = "O valor mínimo não pode ser maior que o máximo.";
+
+export function validatePriceRange(minText: string, maxText: string): PriceRangeValidation {
+  const result: PriceRangeValidation = { valid: true };
+  if (minText.trim()) {
+    const cents = parseReaisToCents(minText);
+    if (cents === null) result.minError = MIN_PRICE_FORMAT_MESSAGE;
+    else result.minPriceCents = cents;
+  }
+  if (maxText.trim()) {
+    const cents = parseReaisToCents(maxText);
+    if (cents === null) result.maxError = MAX_PRICE_FORMAT_MESSAGE;
+    else result.maxPriceCents = cents;
+  }
+  if (
+    result.minPriceCents !== undefined &&
+    result.maxPriceCents !== undefined &&
+    result.minPriceCents > result.maxPriceCents
+  ) {
+    result.rangeError = PRICE_RANGE_MESSAGE;
+  }
+  result.valid = !result.minError && !result.maxError && !result.rangeError;
+  return result;
+}

@@ -1,26 +1,27 @@
 import type { InvalidLocalChoice, Preferences, PreferencesSyncState } from "@freelah/shared";
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
-import { authClient } from "../../lib/auth-client";
+import { useSessionState } from "../auth/SessionState";
 import { preferencesSync } from "./preferencesSync";
 
 /** Liga a sessão do Better Auth à sincronização de preferências. Não altera rotas nem telas. */
 export function PreferencesSyncProvider({ children }: { children: ReactNode }) {
-  const { data, isPending, error } = authClient.useSession();
-  const userId = data?.user.id ?? null;
+  const { state } = useSessionState();
+  const status = state.status;
+  const userId = state.status === "authenticated" ? state.session.user.id : null;
 
   useEffect(() => {
     if (userId) {
       preferencesSync.start(userId);
-    } else if (!isPending && !error) {
-      // Só sessão resolvida e sem usuário conta como logout; carregando ou com erro, não.
+    } else if (status === "unauthenticated") {
+      // Só a API confirmar que não há sessão conta como logout.
       preferencesSync.stop();
       preferencesSync.startVisitor();
-    } else if (!isPending && preferencesSync.getState().status === "signed_out") {
-      // Erro ao consultar a sessão (por exemplo, API fora do ar) com o app recém-aberto: não é
-      // logout e nada é apagado, mas a pessoa ainda precisa ver as preferências deste aparelho.
+    } else if (status === "unknown" && preferencesSync.getState().status === "signed_out") {
+      // Não deu para consultar a sessão (API fora do ar) com o app recém-aberto: não é logout e
+      // nada é apagado, mas a pessoa ainda precisa ver as preferências deste aparelho.
       preferencesSync.startVisitor();
     }
-  }, [userId, isPending, error]);
+  }, [userId, status]);
 
   return <>{children}</>;
 }

@@ -41,9 +41,11 @@ export function useJobDetail(id: string): { state: ResourceState<JobDetail>; ret
 
 /**
  * Lista paginada. Os filtros chegam já estáveis (o chamador faz o debounce); o controlador
- * descarta respostas antigas e não repete requisições para filtros iguais.
+ * descarta respostas antigas e não repete requisições para filtros iguais. `null` significa
+ * "filtros inválidos": nada é consultado e o estado anterior fica como está (a tela decide o que
+ * mostrar no lugar).
  */
-export function useJobsList(params: JobsListParams): {
+export function useJobsList(params: JobsListParams | null): {
   state: JobsListState;
   loadMore: () => void;
   retry: () => void;
@@ -51,8 +53,10 @@ export function useJobsList(params: JobsListParams): {
 } {
   const [controller] = useState(() => createJobsListController({ api: jobsApi }));
   const key = JSON.stringify(params);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` representa o conteúdo de `params`
-  useEffect(() => controller.setParams(params), [controller, key]);
+  useEffect(() => {
+    const current: JobsListParams | null = JSON.parse(key);
+    if (current) controller.setParams(current);
+  }, [controller, key]);
   return {
     state: useObservable(controller),
     loadMore: controller.loadMore,

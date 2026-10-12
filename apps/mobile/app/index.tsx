@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "../src/components/ui";
 import { API_URL } from "../src/lib/api";
 import { authClient } from "../src/lib/auth-client";
+import { useSessionState } from "../src/features/auth/SessionState";
 import { useApiHealth } from "../src/features/health/useApiHealth";
 import {
   CategoryChips,
@@ -81,7 +82,8 @@ function describePreferencesSync(state: PreferencesSyncState): string {
 export default function Index() {
   const { state, retry } = useApiHealth();
   const router = useRouter();
-  const { data: session, isPending } = authClient.useSession();
+  const { state: sessionState, recheck } = useSessionState();
+  const session = sessionState.status === "authenticated" ? sessionState.session : null;
   const {
     state: prefsState,
     retry: retryPrefs,
@@ -208,8 +210,20 @@ export default function Index() {
         )}
 
         <View style={styles.statusBox}>
-          {isPending ? (
+          {sessionState.status === "loading" ? (
             <ActivityIndicator />
+          ) : sessionState.status === "unknown" ? (
+            <View accessibilityLiveRegion="polite" accessibilityRole="alert">
+              <Text style={styles.statusLabel}>Sessão</Text>
+              <Text style={styles.statusText}>Não foi possível verificar sua sessão</Text>
+              <Text style={styles.hint}>
+                O Freelah não conseguiu falar com o servidor. Sua conta e seus dados não foram
+                alterados. Vamos tentar de novo sozinhos.
+              </Text>
+              <Pressable onPress={recheck} style={styles.button} accessibilityRole="button">
+                <Text style={styles.buttonText}>Verificar de novo</Text>
+              </Pressable>
+            </View>
           ) : session ? (
             <>
               <Text style={styles.statusLabel}>Você entrou como</Text>
@@ -233,7 +247,8 @@ export default function Index() {
             tela provisória for substituída (Etapa 4). */}
         <View style={styles.statusBox} accessibilityLiveRegion="polite" testID="preferences-sync-status">
           <Text style={styles.statusLabel}>Preferências (temporário)</Text>
-          <Text style={styles.hint}>{describePreferencesSync(prefsState)}</Text>
+          <Text style={styles.hint}>{describePreferencesSync(prefsState)}
+            {sessionState.status === "unknown" ? " (sessão ainda não verificada)" : ""}</Text>
           {prefsState.status === "error" && (
             <Pressable onPress={retryPrefs} style={styles.button} accessibilityRole="button">
               <Text style={styles.buttonText}>Tentar sincronizar de novo</Text>

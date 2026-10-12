@@ -12,6 +12,7 @@ import {
   makeExcerpt,
   parseReaisToCents,
   publicJobStatusSchema,
+  validatePriceRange,
 } from "./jobs";
 
 describe("jobsQuerySchema", () => {
@@ -204,5 +205,68 @@ describe("respostas", () => {
       owner: { ...detail.owner, phone: "32999990000", email: "a@b.c" },
     });
     expect(parsed.owner).toEqual({ name: "Ana", city: "Cataguases", isDemo: true });
+  });
+});
+
+describe("validatePriceRange", () => {
+  it("campos vazios são válidos e não geram limites", () => {
+    expect(validatePriceRange("", "")).toEqual({ valid: true });
+    expect(validatePriceRange("  ", " ")).toEqual({ valid: true });
+  });
+
+  it("mínimo menor que máximo é válido", () => {
+    expect(validatePriceRange("100", "300")).toEqual({
+      valid: true,
+      minPriceCents: 10000,
+      maxPriceCents: 30000,
+    });
+  });
+
+  it("mínimo igual ao máximo é válido", () => {
+    expect(validatePriceRange("200", "200,00")).toMatchObject({
+      valid: true,
+      minPriceCents: 20000,
+      maxPriceCents: 20000,
+    });
+  });
+
+  it("só mínimo ou só máximo são válidos", () => {
+    expect(validatePriceRange("50", "")).toEqual({ valid: true, minPriceCents: 5000 });
+    expect(validatePriceRange("", "50,5")).toEqual({ valid: true, maxPriceCents: 5050 });
+    expect(validatePriceRange("0", "")).toEqual({ valid: true, minPriceCents: 0 });
+  });
+
+  it("mínimo maior que máximo é inválido, com a mensagem da faixa", () => {
+    const result = validatePriceRange("500", "100");
+    expect(result.valid).toBe(false);
+    expect(result.rangeError).toBe("O valor mínimo não pode ser maior que o máximo.");
+    expect(result.minError).toBeUndefined();
+    expect(result.maxError).toBeUndefined();
+  });
+
+  it("um centavo de diferença já é inválido", () => {
+    expect(validatePriceRange("10,01", "10").valid).toBe(false);
+    expect(validatePriceRange("10", "10,01").valid).toBe(true);
+  });
+
+  it("corrigir os valores depois do erro volta a ser válido", () => {
+    expect(validatePriceRange("500", "100").valid).toBe(false);
+    expect(validatePriceRange("500", "1000").valid).toBe(true);
+    expect(validatePriceRange("50", "100").valid).toBe(true);
+  });
+
+  it("texto que não é valor em reais é inválido e aponta o campo certo", () => {
+    const min = validatePriceRange("abc", "100");
+    expect(min).toMatchObject({ valid: false, minError: expect.stringMatching(/reais/) });
+    expect(min.maxError).toBeUndefined();
+    const max = validatePriceRange("100", "1,234");
+    expect(max).toMatchObject({ valid: false, maxError: expect.stringMatching(/reais/) });
+    expect(validatePriceRange("-5", "").valid).toBe(false);
+  });
+
+  it("valores inválidos não viram limites (nunca são enviados)", () => {
+    const result = validatePriceRange("abc", "xyz");
+    expect(result.minPriceCents).toBeUndefined();
+    expect(result.maxPriceCents).toBeUndefined();
   });
 });
