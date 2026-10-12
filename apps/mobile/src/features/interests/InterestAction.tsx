@@ -24,7 +24,7 @@ const UNCONFIRMED = "Não conseguimos confirmar o que aconteceu. Confira o estad
  * registrado e retirá-lo; a dona vê o atalho para os interessados. O estado só muda com a resposta
  * da API; sem resposta confiável a pessoa confere o estado atual (nada é reenviado sozinho).
  */
-export function InterestAction({ jobId }: { jobId: string }) {
+export function InterestAction({ jobId, accepting = true }: { jobId: string; accepting?: boolean }) {
   const router = useRouter();
   const [viewer, setViewer] = useState<ViewerState>({ status: "loading" });
   const [action, setAction] = useState<Action>({ kind: "idle" });
@@ -148,7 +148,11 @@ export function InterestAction({ jobId }: { jobId: string }) {
       ) : (
         <>
           {interest ? <Text style={styles.text}>Você retirou seu interesse. Pode demonstrá-lo de novo.</Text> : null}
-          <Button title="Tenho interesse" onPress={() => void run(() => myJobsApi.expressInterest(jobId))} loading={busy} disabled={busy} />
+          {accepting ? (
+            <Button title="Tenho interesse" onPress={() => void run(() => myJobsApi.expressInterest(jobId))} loading={busy} disabled={busy} />
+          ) : (
+            <Button title="Não aceita novos interessados" disabled onPress={() => undefined} />
+          )}
         </>
       )}
 

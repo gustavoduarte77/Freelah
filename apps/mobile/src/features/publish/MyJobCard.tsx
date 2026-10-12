@@ -19,6 +19,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { Button, colors } from "../../components/ui";
 import { DemoBadge } from "../jobs/components";
 import { myJobsApi } from "./api";
+import { CompleteAction } from "./CompleteAction";
 
 const STATUS_LABEL: Record<OwnJobStatus, string> = {
   DRAFT: "Rascunho",
@@ -151,14 +152,19 @@ export function MyJobCard({
       </Text>
 
       {job.status === "DRAFT" ? <Text style={styles.meta}>Rascunho: ainda não aparece para ninguém.</Text> : null}
-      {job.interestCount > 0 ? (
-        <>
-          <Text style={styles.interested} testID="my-job-interested">
-            {job.interestCount === 1 ? "1 pessoa interessada" : `${job.interestCount} pessoas interessadas`}
-          </Text>
-          <Button title="Ver interessados" variant="link" onPress={() => router.push(`/interessados/${job.id}` as Href)} />
-        </>
+      {job.hiredWorkerName ? (
+        <Text style={styles.interested} testID="my-job-hired">
+          Contratado: {job.hiredWorkerName}
+        </Text>
+      ) : job.interestCount > 0 ? (
+        <Text style={styles.interested} testID="my-job-interested">
+          {job.interestCount === 1 ? "1 pessoa interessada" : `${job.interestCount} pessoas interessadas`}
+        </Text>
       ) : null}
+      {job.interestCount > 0 || job.hiredWorkerName ? (
+        <Button title="Ver interessados" variant="link" onPress={() => router.push(`/interessados/${job.id}` as Href)} />
+      ) : null}
+      {job.canComplete ? <CompleteAction job={job} onJobUpdated={onJobUpdated} /> : null}
 
       {action.kind === "confirming" ? (
         <View style={styles.confirm} accessibilityRole="alert" testID="publish-draft-confirm">

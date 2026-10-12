@@ -16,6 +16,11 @@ import { getSession, requireAuth } from "../middleware/require-auth";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LIST_LIMIT = 100;
 
+const PENDING_ONLY_MESSAGE = "Só é possível selecionar quem está com o interesse pendente.";
+
+/** Interrompe a transação de seleção: desfaz tudo o que ela já tivesse gravado. */
+class NotSelectableError extends Error {}
+
 const notFound = (res: Response, message = "Oportunidade não encontrada.") =>
   res.status(404).json({ error: "not_found", message });
 const refuse = (res: Response, error: string, message: string) =>
@@ -162,6 +167,81 @@ export function createInterestsRouter(
         return;
       }
       const body: InterestResponse = { interest: { id, status: "WITHDRAWN" } };
+      res.json(body);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ------------------------------------------------------------ selecionar o trabalhador (só a dona)
+  router.post("/me/interests/:id/select", guard, noStore, async (req, res, next) => {
+    try {
+      const id = req.params.id as string;
+      const me = getSession(res).user.id;
+      const target = UUID.test(id)
+        ? await prisma.interest.findFirst({ where: { id, job: { ownerId: me } }, select: { id: true, jobId: true } })
+        : null;
+      if (!target) {
+        notFound(res, "Interesse não encontrado.");
+        return;
+      }
+      const moment = now();
+
+      const outcome = await prisma
+        .$transaction(async (tx) => {
+          // Trava a oportunidade: duas seleções ao mesmo tempo viram fila, e a segunda já a encontra contratada.
+          const rows = await tx.$queryRaw<
+            { status: OwnJobStatus; expiresAt: Date }[]
+          >`SELECT "status", "expiresAt" FROM "Job" WHERE "id" = ${target.jobId} FOR UPDATE`;
+          const job = rows[0];
+          if (!job) return { kind: "not_found" as const };
+          const effective = ownJobEffectiveStatus(job.status, job.expiresAt, moment);
+          if (effective !== "PUBLISHED" && effective !== "NEGOTIATING") {
+            return {
+              kind: "closed" as const,
+              message:
+                effective === "HIRED" || effective === "COMPLETED"
+                  ? "Esta oportunidade já tem uma pessoa selecionada."
+                  : effective === "CANCELLED"
+                    ? "Esta oportunidade foi cancelada."
+                    : "Não é possível selecionar agora: a oportunidade não está aberta.",
+            };
+          }
+          const interest = await tx.interest.findUnique({ where: { id: target.id }, select: { status: true } });
+          if (!interest || interest.status !== "PENDING") {
+            return { kind: "closed" as const, message: PENDING_ONLY_MESSAGE };
+          }
+          // Atualização condicional: se a pessoa retirou o interesse entre a leitura e a escrita, nenhuma
+          // linha muda e a transação inteira é desfeita (nada de contratar quem acabou de desistir).
+          const accepted = await tx.interest.updateMany({
+            where: { id: target.id, jobId: target.jobId, status: "PENDING" },
+            data: { status: "ACCEPTED" },
+          });
+          if (accepted.count !== 1) throw new NotSelectableError(PENDING_ONLY_MESSAGE);
+          await tx.interest.updateMany({
+            where: { jobId: target.jobId, id: { not: target.id }, status: "PENDING" },
+            data: { status: "REJECTED" },
+          });
+          await tx.job.update({
+            where: { id: target.jobId },
+            data: { status: "HIRED", selectedInterestId: target.id, hiredAt: moment },
+          });
+          return { kind: "selected" as const };
+        })
+        .catch((error: unknown) => {
+          if (error instanceof NotSelectableError) return { kind: "closed" as const, message: error.message };
+          throw error;
+        });
+
+      if (outcome.kind === "not_found") {
+        notFound(res, "Interesse não encontrado.");
+        return;
+      }
+      if (outcome.kind === "closed") {
+        refuse(res, "not_selectable", outcome.message);
+        return;
+      }
+      const body: InterestResponse = { interest: { id: target.id, status: "ACCEPTED" } };
       res.json(body);
     } catch (error) {
       next(error);

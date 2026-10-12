@@ -109,7 +109,9 @@ function Detail({ job }: { job: JobDetail }) {
       </Text>
 
       <View style={styles.action}>
-        {!job.acceptingInterests ? (
+        {sessionState.status === "authenticated" ? (
+          <InterestAction jobId={job.id} accepting={job.acceptingInterests} />
+        ) : !job.acceptingInterests ? (
           <Button title="Não aceita novos interessados" disabled onPress={() => undefined} />
         ) : sessionState.status === "loading" ? (
           <LoadingBox />
@@ -122,8 +124,6 @@ function Detail({ job }: { job: JobDetail }) {
             </Text>
             <Button title="Verificar de novo" variant="link" onPress={recheck} />
           </>
-        ) : sessionState.status === "authenticated" ? (
-          <InterestAction jobId={job.id} />
         ) : (
           <>
             <Button

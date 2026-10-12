@@ -137,6 +137,12 @@ export interface MyJobsApi {
   /** Quem demonstrou interesse na minha oportunidade (só a dona vê). */
   jobInterests(jobId: string): Promise<JobInterest[]>;
 
+  // --- Contratação (PRD 19 e 20) ---
+  /** A dona seleciona uma pessoa entre as interessadas (não dá para desfazer). */
+  selectInterest(interestId: string): Promise<InterestResponse["interest"]>;
+  /** A dona registra que o serviço foi concluído. */
+  complete(id: string): Promise<OwnJob>;
+
   // --- Chat (PRD 18) ---
   /** Abre (ou cria, uma única vez) a conversa de um interesse. Devolve o id da conversa. */
   openConversation(interestId: string): Promise<string>;
@@ -275,6 +281,15 @@ export function createMyJobsApi(options: { baseUrl: string; fetch: MyJobsFetch }
         (json) => jobInterestsResponseSchema.safeParse(json),
       );
       return result.interests;
+    },
+    async selectInterest(interestId) {
+      const result = await request(`${root}/me/interests/${encodeURIComponent(interestId)}/select`, "POST", {}, (json) =>
+        interestResponseSchema.safeParse(json),
+      );
+      return result.interest;
+    },
+    complete(id) {
+      return call("POST", `/${encodeURIComponent(id)}/complete`, {}, one);
     },
     async openConversation(interestId) {
       const result = await request(`${root}/me/interests/${encodeURIComponent(interestId)}/conversation`, "POST", {}, (json) =>

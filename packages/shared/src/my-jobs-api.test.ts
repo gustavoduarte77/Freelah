@@ -23,6 +23,8 @@ const job = {
   createdAt: "2026-10-12T15:00:00.000Z",
   updatedAt: "2026-10-12T15:00:00.000Z",
   interestCount: 0,
+  canComplete: false,
+  hiredWorkerName: null,
   canEdit: true,
   canPublish: true,
   canCancel: true,

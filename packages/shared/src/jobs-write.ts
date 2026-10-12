@@ -255,6 +255,8 @@ export const CANCELLABLE_JOB_STATUSES: readonly OwnJobStatus[] = ["DRAFT", "PUBL
 export const canEditJob = (status: OwnJobStatus) => EDITABLE_JOB_STATUSES.includes(status);
 export const canCancelJob = (status: OwnJobStatus) => CANCELLABLE_JOB_STATUSES.includes(status);
 export const canPublishJob = (status: OwnJobStatus) => status === "DRAFT";
+/** Concluir o serviço: só depois de contratar (PRD 20). */
+export const canCompleteJob = (status: OwnJobStatus) => status === "HIRED";
 
 export const OWN_JOB_STATE_MESSAGES: Record<OwnJobStatus, string> = {
   DRAFT: "Rascunho: ainda não aparece para ninguém.",
@@ -295,6 +297,10 @@ export const ownJobSchema = z.object({
   canEdit: z.boolean(),
   canPublish: z.boolean(),
   canCancel: z.boolean(),
+  /** Pode registrar a conclusão (a oportunidade está contratada). */
+  canComplete: z.boolean().default(false),
+  /** Nome de quem foi selecionado (contratada ou concluída). */
+  hiredWorkerName: z.string().nullable().default(null),
 });
 export type OwnJob = z.infer<typeof ownJobSchema>;
 

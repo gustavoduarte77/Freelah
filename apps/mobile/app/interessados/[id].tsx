@@ -5,7 +5,7 @@ import {
   type OwnJob,
 } from "@freelah/shared";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, colors } from "../../src/components/ui";
@@ -101,21 +101,71 @@ function InterestedList({ jobId }: { jobId: string }) {
     );
   }
 
+  const open = state.job.status === "PUBLISHED" || state.job.status === "NEGOTIATING";
   return (
     <View style={styles.gap}>
       <Text style={styles.jobTitle}>{state.job.title}</Text>
+      {state.job.hiredWorkerName ? (
+        <Text style={styles.hired} testID="interested-hired">
+          {state.job.status === "COMPLETED" ? "Serviço concluído com " : "Contratado: "}
+          {state.job.hiredWorkerName}
+        </Text>
+      ) : null}
       <Button title="Atualizar" variant="link" onPress={() => void load()} />
       {state.interests.length === 0 ? (
         <EmptyBox title="Ninguém demonstrou interesse ainda" text="Quando alguém demonstrar, aparece aqui." />
       ) : (
-        state.interests.map((interest) => <InterestedCard key={interest.id} interest={interest} />)
+        state.interests.map((interest) => (
+          <InterestedCard key={interest.id} interest={interest} canSelect={open} onChanged={() => void load()} />
+        ))
       )}
     </View>
   );
 }
 
-function InterestedCard({ interest }: { interest: JobInterest }) {
+function InterestedCard({
+  interest,
+  canSelect,
+  onChanged,
+}: {
+  interest: JobInterest;
+  /** A oportunidade ainda está aberta: dá para selecionar quem está pendente. */
+  canSelect: boolean;
+  /** A API mudou o estado (ou recusou por ele ter mudado): recarrega a lista. */
+  onChanged: () => void;
+}) {
   const chat = useOpenChat();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
+
+  async function select() {
+    if (inFlight.current) return; // ignora cliques repetidos antes de a tela atualizar
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await myJobsApi.selectInterest(interest.id); // só vale com a resposta da API
+      setConfirming(false);
+      onChanged();
+    } catch (caught) {
+      const failure = caught as MyJobsApiError;
+      setConfirming(false);
+      if (failure.outcomeUnknown) {
+        setError("Não conseguimos confirmar a seleção. Use “Atualizar” para conferir antes de tentar de novo.");
+      } else if (failure.kind === "invalid_state") {
+        setError(failure.message);
+        onChanged();
+      } else {
+        setError(failure.kind === "unauthorized" ? failure.message : "Não foi possível selecionar. Nada foi alterado.");
+      }
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+
   return (
     <View style={styles.card} testID="interested">
       <Text style={styles.name}>{interest.worker.name}</Text>
@@ -130,6 +180,24 @@ function InterestedCard({ interest }: { interest: JobInterest }) {
         <Text style={styles.errorText} accessibilityRole="alert" testID="chat-open-error">
           {chat.error}
         </Text>
+      ) : null}
+      {error ? (
+        <Text style={styles.errorText} accessibilityRole="alert" testID="select-error">
+          {error}
+        </Text>
+      ) : null}
+      {canSelect && interest.status === "PENDING" ? (
+        confirming ? (
+          <View style={styles.confirm} accessibilityRole="alert" testID="select-confirm">
+            <Text style={styles.confirmText}>
+              Selecionar {interest.worker.name}? As outras pessoas interessadas serão marcadas como não selecionadas e não dá para desfazer.
+            </Text>
+            <Button title="Confirmar seleção" onPress={() => void select()} loading={busy} disabled={busy} />
+            <Button title="Voltar" variant="link" onPress={() => setConfirming(false)} disabled={busy} />
+          </View>
+        ) : (
+          <Button title="Selecionar" variant="link" onPress={() => setConfirming(true)} />
+        )
       ) : null}
     </View>
   );
@@ -146,6 +214,9 @@ const styles = StyleSheet.create({
   name: { fontSize: 17, fontWeight: "700", color: colors.text },
   meta: { fontSize: 13, color: colors.muted },
   status: { fontSize: 14, fontWeight: "700", color: colors.brand },
+  hired: { fontSize: 15, fontWeight: "700", color: colors.brand },
+  confirm: { backgroundColor: "#E8F0FE", borderRadius: 12, padding: 12, gap: 6 },
+  confirmText: { fontSize: 14, color: colors.text },
   errorBox: { backgroundColor: "#FCE8E6", borderRadius: 12, padding: 14, gap: 8 },
   errorText: { color: colors.error, fontSize: 14 },
 });

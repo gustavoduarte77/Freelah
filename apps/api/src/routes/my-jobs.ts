@@ -2,6 +2,7 @@ import {
   JOB_VALIDATION_MESSAGE,
   OWN_JOB_STATE_MESSAGES,
   canCancelJob,
+  canCompleteJob,
   canEditJob,
   canPublishJob,
   createJobSchema,
@@ -49,6 +50,7 @@ const ownSelect = {
   updatedAt: true,
   category: { select: { id: true, slug: true, name: true } },
   _count: { select: { interests: { where: { status: "PENDING" } } } },
+  selectedInterest: { select: { worker: { select: { name: true } } } },
 } as const;
 
 type OwnRow = NonNullable<Awaited<ReturnType<typeof findOwn>>>;
@@ -87,6 +89,8 @@ function toOwnJob(row: OwnRow, now: Date): OwnJob {
     canEdit: canEditJob(status),
     canPublish: canPublishJob(status),
     canCancel: canCancelJob(status),
+    canComplete: canCompleteJob(status),
+    hiredWorkerName: row.selectedInterest?.worker.name ?? null,
   };
 }
 
@@ -406,6 +410,45 @@ export function createMyJobsRouter(
         return;
       }
       const body: OwnJobResponse = { job: toOwnJob(cancelled, moment) };
+      res.json(body);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ------------------------------------------------------------------ concluir o serviço
+  router.post("/me/jobs/:id/complete", async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const ownerId = getSession(res).user.id;
+      const row = UUID.test(id) ? await findOwn(prisma, id, ownerId) : null;
+      if (!row) {
+        sendNotFound(res);
+        return;
+      }
+      const moment = now();
+      // Só quem contratou conclui, e só uma vez: UPDATE condicional ao estado "contratada".
+      const result = await prisma.job.updateMany({
+        where: { id, ownerId, status: "HIRED" },
+        data: { status: "COMPLETED", completedAt: moment },
+      });
+      if (result.count === 0) {
+        const fresh = await findOwn(prisma, id, ownerId);
+        const status = fresh ? toOwnJob(fresh, moment).status : row.status;
+        sendInvalidState(
+          res,
+          status === "COMPLETED"
+            ? "Este serviço já foi concluído."
+            : "Só é possível concluir um serviço depois de contratar alguém.",
+        );
+        return;
+      }
+      const completed = await findOwn(prisma, id, ownerId);
+      if (!completed) {
+        sendNotFound(res);
+        return;
+      }
+      const body: OwnJobResponse = { job: toOwnJob(completed, moment) };
       res.json(body);
     } catch (error) {
       next(error);
