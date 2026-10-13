@@ -7,6 +7,7 @@ import {
   type ResourceController,
 } from "@freelah/shared";
 import { fetchHealth } from "../../lib/api";
+import { onJobsInvalidated } from "../../lib/liveRefresh";
 import { recovery } from "../recovery/coordinator";
 import { jobsApi } from "./jobsApi";
 
@@ -51,3 +52,12 @@ export function detailController(id: string): ResourceController<JobDetail> {
   }
   return controller;
 }
+
+// Se o estado de uma vaga mudou por fora (hoje, só no Modo Demonstração), os detalhes em cache
+// são descartados e as listas se atualizam em segundo plano, sem esperar a validade do cache.
+onJobsInvalidated(() => {
+  details.forEach((entry) => entry.detach());
+  details.clear();
+  homeJobsController.refresh();
+  exploreJobsController.refresh();
+});

@@ -51,7 +51,7 @@ export function HireConfirmedModal({
             Contratação confirmada!
           </Text>
           <Text style={styles.lead}>
-            {viewerIsOwner ? `${other.name} aceitou seu convite para este serviço.` : "Você aceitou o convite para este serviço."}
+            {viewerIsOwner ? `${other.name} aceitou seu convite para este serviço.` : `${other.name} confirmou sua contratação para este serviço.`}
           </Text>
           <View style={styles.details}>
             <Row label="Oportunidade" value={job.title} />
@@ -78,8 +78,12 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+// "default" é CSS válido, mas fora do tipo CursorValue do React Native (só aceita auto e pointer).
+const ARROW = "default" as unknown as "auto";
+
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.55)", alignItems: "center", justifyContent: "center", padding: 20 },
+  // O Pressable do React Native Web põe cursor de mão em tudo o que ele contém; aqui só o botão é clicável.
+  backdrop: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.55)", alignItems: "center", justifyContent: "center", padding: 20, cursor: ARROW },
   card: {
     width: "100%",
     maxWidth: 440,
@@ -89,6 +93,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     boxShadow: shadow.raised,
+    cursor: ARROW,
   },
   circle: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.success, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 24, fontWeight: "800", color: colors.text, textAlign: "center" },

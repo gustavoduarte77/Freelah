@@ -57,6 +57,10 @@ EXPO_PUBLIC_API_URL=http://192.168.0.10:3333
 
 (descubra o IP com `ipconfig` no Windows) e reinicie o `npm run dev:mobile`. No Windows, permita a porta **3333** (e a 8081) no firewall quando for solicitado. A API já escuta em todas as interfaces de rede.
 
+## Modo Demonstração Offline
+
+Para apresentações sem API, banco nem internet: `npm run demo:web` e abrir http://localhost:8082 (conta `usuario@gmail.com` / `12345678`). Os dados são fictícios e o modo não existe no app normal. Detalhes em [docs/modo-demonstracao-offline.md](docs/modo-demonstracao-offline.md).
+
 ## Banco de dados (PostgreSQL + Prisma)
 
 O Freelah usa PostgreSQL com o **mesmo schema e as mesmas migrações em todos os ambientes**. Quem escolhe o banco é só a variável `DATABASE_URL` de `apps/api/.env`; o código não muda.

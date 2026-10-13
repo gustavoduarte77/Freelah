@@ -1,3 +1,4 @@
+import { DemoRoot } from "../src/demo/gate"; // precisa vir primeiro (Modo Demonstração; inerte no app normal)
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SessionStateProvider } from "../src/features/auth/SessionState";
@@ -12,7 +13,9 @@ export default function RootLayout() {
         <RecoveryTriggers>
           <StatusBar style="dark" />
           <AppShell>
-            <Stack screenOptions={{ headerShown: false }} />
+            <DemoRoot>
+              <Stack screenOptions={{ headerShown: false }} />
+            </DemoRoot>
           </AppShell>
         </RecoveryTriggers>
       </PreferencesSyncProvider>

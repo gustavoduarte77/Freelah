@@ -12,6 +12,7 @@ import { EmptyBox, LoadingBox, StatusBadge } from "../src/features/jobs/componen
 import { useJobDetail } from "../src/features/jobs/hooks";
 import { JobArt } from "../src/features/jobs/JobArt";
 import { myJobsApi } from "../src/features/publish/api";
+import { useLiveRefresh } from "../src/lib/liveRefresh";
 import { CONTENT_MAX_WIDTH, PAGE_PADDING, WIDE_BREAKPOINT, radius, shadow, useBreakpoint } from "../src/theme";
 
 type State =
@@ -98,6 +99,8 @@ function Inbox() {
       clearInterval(timer);
     };
   }, [load]);
+
+  useLiveRefresh(() => void load());
 
   // O link /mensagens?c=<id> (vindo de "Conversar") escolhe a conversa.
   const requested = first(params.c);

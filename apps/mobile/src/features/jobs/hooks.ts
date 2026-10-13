@@ -5,7 +5,8 @@ import {
   type JobsListState,
   type ResourceState,
 } from "@freelah/shared";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useLiveRefresh } from "../../lib/liveRefresh";
 import {
   categoriesController,
   detailController,
@@ -30,7 +31,10 @@ export function useCategories(): { state: ResourceState<Category[]>; retry: () =
 
 /** Detalhe de uma oportunidade; muda de controlador quando o id muda. */
 export function useJobDetail(id: string): { state: ResourceState<JobDetail>; retry: () => void } {
-  const controller = useMemo(() => detailController(id), [id]);
+  const [epoch, setEpoch] = useState(0);
+  useLiveRefresh(() => setEpoch((value) => value + 1));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- epoch força um controlador novo quando o cache foi descartado
+  const controller = useMemo(() => detailController(id), [id, epoch]);
   useEffect(() => controller.load(), [controller]);
   return { state: useObservable(controller), retry: controller.retry };
 }

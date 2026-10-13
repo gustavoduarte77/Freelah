@@ -11,6 +11,7 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, T
 import { Avatar } from "../../components/Avatar";
 import { Icon } from "../../components/Icon";
 import { Button, colors } from "../../components/ui";
+import { useLiveRefresh } from "../../lib/liveRefresh";
 import { focusRing, noInnerOutline, radius } from "../../theme";
 import { LoadingBox } from "../jobs/components";
 import { HireBanner } from "./HireBanner";
@@ -65,6 +66,8 @@ export function ChatPanel({
   const [confirmFor, setConfirmFor] = useState<string | null>(null);
   const cursor = useRef<string | null>(null);
   const polling = useRef(false);
+  /** Muda a cada recarga completa; consultas que começaram antes dela são descartadas. */
+  const generation = useRef(0);
   const sending = useRef(false);
   const scroller = useRef<ScrollView>(null);
 
@@ -89,8 +92,10 @@ export function ChatPanel({
   async function poll() {
     if (polling.current) return;
     polling.current = true;
+    const started = generation.current;
     try {
       const news = await myJobsApi.messages(conversationId, cursor.current);
+      if (started !== generation.current) return;
       cursor.current = news.cursor ?? cursor.current;
       setMessages((current) => merge(current, news.messages));
       setPollFailed(false);
@@ -101,6 +106,21 @@ export function ChatPanel({
       polling.current = false;
     }
   }
+
+  /** Relê conversa e histórico por inteiro, no lugar (sem tela de carregamento). Falha não apaga nada. */
+  async function reloadAll() {
+    const started = ++generation.current;
+    try {
+      const [conversation, history] = await Promise.all([myJobsApi.conversation(conversationId), myJobsApi.messages(conversationId)]);
+      if (started !== generation.current) return;
+      cursor.current = history.cursor;
+      setMessages(history.messages);
+      setLoad({ status: "ready", conversation });
+    } catch {
+      // mantém o que já está na tela
+    }
+  }
+  useLiveRefresh(() => void reloadAll());
 
   /** Confere a situação real da conversa (convite, contratação); falha de rede não apaga nada. */
   async function refreshConversation() {
