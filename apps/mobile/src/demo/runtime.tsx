@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../components/ui";
+import { isChatOnScreen, subscribeChatPresence } from "../lib/liveRefresh";
 import { radius, shadow } from "../theme";
 import { API_URL } from "../lib/api";
 import { TOTAL_STEPS } from "./data";
@@ -31,13 +32,15 @@ export function installDemoFetch() {
 /** Remonta as telas abertas a cada ação dos controles, para que releiam o estado da demonstração. */
 export function DemoRoot({ children }: { children: ReactNode }) {
   const version = useSyncExternalStore(subscribe, getVersion, getVersion);
+  // Os controles só existem enquanto a conversa simulada está na tela (em qualquer das duas telas que a mostram).
+  const chatOpen = useSyncExternalStore(subscribeChatPresence, isChatOnScreen, isChatOnScreen);
   return (
     <>
-      {/* Reserva o espaço da barra de controles para ela não cobrir o rodapé das telas. */}
-      <View style={styles.content}>
+      {/* Quando a barra aparece, reserva o espaço dela para não cobrir o rodapé da conversa. */}
+      <View style={[styles.content, chatOpen ? styles.contentWithBar : null]}>
         <Fragment key={version}>{children}</Fragment>
       </View>
-      <DemoControls />
+      {chatOpen ? <DemoControls /> : null}
     </>
   );
 }
@@ -127,7 +130,8 @@ function ControlButton({
 }
 
 const styles = StyleSheet.create({
-  content: { flex: 1, paddingBottom: 64 },
+  content: { flex: 1 },
+  contentWithBar: { paddingBottom: 64 },
   wrap: { position: "fixed" as "absolute", left: 0, right: 0, bottom: 12, alignItems: "center", zIndex: 50 },
   bar: {
     flexDirection: "row",

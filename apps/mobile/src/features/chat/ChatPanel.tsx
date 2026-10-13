@@ -11,7 +11,7 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, T
 import { Avatar } from "../../components/Avatar";
 import { Icon } from "../../components/Icon";
 import { Button, colors } from "../../components/ui";
-import { useLiveRefresh } from "../../lib/liveRefresh";
+import { useChatPresence, useLiveRefresh } from "../../lib/liveRefresh";
 import { focusRing, noInnerOutline, radius } from "../../theme";
 import { LoadingBox } from "../jobs/components";
 import { HireBanner } from "./HireBanner";
@@ -121,6 +121,7 @@ export function ChatPanel({
     }
   }
   useLiveRefresh(() => void reloadAll());
+  useChatPresence();
 
   /** Confere a situação real da conversa (convite, contratação); falha de rede não apaga nada. */
   async function refreshConversation() {
