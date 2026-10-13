@@ -41,6 +41,14 @@ npm run dev:api     # API em http://localhost:3333  (teste: /health)
 npm run dev:web     # app na Web em http://localhost:8081
 ```
 
+### Home e exploração
+
+- `/`: apresentação do FreeLah, como funciona e uma prévia de até três oportunidades recentes, carregadas da API com os mesmos cartões e estados de conexão usados no app.
+- `/explorar`: pesquisa completa, categorias, filtros de cidade e valor, lista/grade e paginação. A exploração continua pública.
+- Os botões de publicação usam `/publicar` e mantêm a verificação de sessão existente.
+
+Na primeira visita, a Home já pode ser vista sem preencher preferências. **Personalizar meus atalhos** abre a escolha existente de encontrar trabalho, contratar alguém ou ambos; essas preferências continuam apenas ordenando os atalhos. Quando há um problema nas preferências locais, **Revisar preferências deste aparelho** abre a recuperação existente. A sessão e as permissões não dependem dessa personalização.
+
 Para o celular (Expo Go):
 
 ```bash

@@ -37,7 +37,7 @@ const NAV: NavItem[] = [
 // Telas de entrada têm cartão próprio e não mostram a barra.
 const HIDDEN_ON = ["/entrar", "/cadastrar"];
 
-type Hover = { hovered?: boolean };
+type Interaction = { hovered?: boolean; focused?: boolean };
 
 // Perfil e configurações ainda não foram construídos: aparecem desabilitados e marcados "Em breve",
 // sem levar a páginas inexistentes. Navegação principal (oportunidades, interesses, mensagens) fica só na barra.
@@ -61,7 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 function TopBar({ pathname }: { pathname: string }) {
   const router = useRouter();
-  const { isNarrow } = useBreakpoint();
+  const { isNarrow, isWide } = useBreakpoint();
   const { state, recheck } = useSessionState();
   const session = state.status === "authenticated" ? state.session : null;
   const items = NAV.filter((item) => !item.needsSession || session);
@@ -77,20 +77,24 @@ function TopBar({ pathname }: { pathname: string }) {
 
   return (
     <View style={styles.bar} accessibilityRole="header">
-      <View style={styles.barInner}>
+      <View style={[styles.barInner, isNarrow ? styles.barInnerCompact : null]}>
         <Pressable
           accessibilityRole="link"
           accessibilityLabel="Freelah, ir para o início"
           onPress={() => router.push("/")}
-          style={styles.logo}
+          style={({ hovered, focused }: Interaction) => [
+            styles.logo,
+            hovered ? styles.logoHover : null,
+            focused ? styles.focus : null,
+          ]}
         >
           <View style={styles.logoMark}>
             <Text style={styles.logoMarkText}>F</Text>
           </View>
-          <Text style={styles.logoText}>Freelah</Text>
+          <Text style={[styles.logoText, isNarrow ? styles.logoTextCompact : null]}>Freelah</Text>
         </Pressable>
 
-        {isNarrow ? <View style={styles.spacer} /> : <View style={styles.navRow}>{nav}</View>}
+        {isWide ? <View style={styles.navRow}>{nav}</View> : <View style={styles.spacer} />}
 
         <View style={styles.right}>
           {session ? (
@@ -100,12 +104,16 @@ function TopBar({ pathname }: { pathname: string }) {
                 icon="chat"
                 active={isActive(pathname, ["/mensagens", "/conversa"])}
                 onPress={() => router.push("/mensagens" as Href)}
-                compact={isNarrow}
+                compact={!isWide}
               />
-              <AccountMenu name={session.user.name} email={session.user.email} compact={isNarrow} />
+              <AccountMenu name={session.user.name} email={session.user.email} compact={!isWide} />
             </>
           ) : state.status === "unknown" ? (
-            <Pressable accessibilityRole="button" onPress={recheck} style={styles.unknown}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={recheck}
+              style={({ focused }: Interaction) => [styles.unknown, focused ? styles.focus : null]}
+            >
               <Text style={styles.unknownText}>Sessão não verificada · tentar de novo</Text>
             </Pressable>
           ) : state.status === "unauthenticated" ? (
@@ -113,14 +121,24 @@ function TopBar({ pathname }: { pathname: string }) {
               <Pressable
                 accessibilityRole="button"
                 onPress={() => router.push("/entrar")}
-                style={({ hovered }: Hover) => [styles.signIn, hovered ? styles.signInHover : null]}
+                style={({ hovered, focused }: Interaction) => [
+                  styles.signIn,
+                  isNarrow ? styles.authCompact : null,
+                  hovered ? styles.signInHover : null,
+                  focused ? styles.focus : null,
+                ]}
               >
                 <Text style={styles.signInText}>Entrar</Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => router.push("/cadastrar")}
-                style={({ hovered }: Hover) => [styles.signUp, hovered ? styles.signUpHover : null]}
+                style={({ hovered, focused }: Interaction) => [
+                  styles.signUp,
+                  isNarrow ? styles.authCompact : null,
+                  hovered ? styles.signUpHover : null,
+                  focused ? styles.focus : null,
+                ]}
               >
                 <Text style={styles.signUpText}>Criar conta</Text>
               </Pressable>
@@ -128,7 +146,7 @@ function TopBar({ pathname }: { pathname: string }) {
           ) : null}
         </View>
       </View>
-      {isNarrow ? (
+      {!isWide ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navScroll}>
           {nav}
         </ScrollView>
@@ -143,9 +161,10 @@ function NavLink({ item, active, onPress }: { item: NavItem; active: boolean; on
       accessibilityRole="link"
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      style={({ hovered }: Hover) => [
+      style={({ hovered, focused }: Interaction) => [
         styles.navLink,
         active ? styles.navLinkActive : hovered ? styles.navLinkHover : null,
+        focused ? styles.focus : null,
       ]}
     >
       <Icon name={item.icon} size={16} color={active ? colors.brand : colors.muted} />
@@ -171,10 +190,12 @@ function IconButton({
     <Pressable
       accessibilityRole="link"
       accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
       onPress={onPress}
-      style={({ hovered }: Hover) => [
+      style={({ hovered, focused }: Interaction) => [
         styles.iconButton,
         active ? styles.navLinkActive : hovered ? styles.navLinkHover : null,
+        focused ? styles.focus : null,
       ]}
     >
       <Icon name={icon} size={18} color={active ? colors.brand : colors.textSoft} />
@@ -205,7 +226,11 @@ function AccountMenu({ name, email, compact }: { name: string; email: string; co
         accessibilityLabel="Menu da conta"
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen((value) => !value)}
-        style={({ hovered }: Hover) => [styles.account, hovered || open ? styles.navLinkHover : null]}
+        style={({ hovered, focused }: Interaction) => [
+          styles.account,
+          hovered || open ? styles.navLinkHover : null,
+          focused ? styles.focus : null,
+        ]}
       >
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initial}</Text>
@@ -242,7 +267,11 @@ function AccountMenu({ name, email, compact }: { name: string; email: string; co
             accessibilityRole="button"
             disabled={signingOut}
             onPress={signOut}
-            style={({ hovered }: Hover) => [styles.menuItem, hovered ? styles.navLinkHover : null]}
+            style={({ hovered, focused }: Interaction) => [
+              styles.menuItem,
+              hovered ? styles.navLinkHover : null,
+              focused ? styles.focus : null,
+            ]}
           >
             <Text style={styles.menuItemText}>{signingOut ? "Saindo…" : "Sair"}</Text>
           </Pressable>
@@ -269,9 +298,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 16,
     paddingHorizontal: PAGE_PADDING,
-    height: 64,
+    minHeight: 64,
+    paddingVertical: 12,
   },
-  logo: { flexDirection: "row", alignItems: "center", gap: 8, cursor: "pointer" },
+  barInnerCompact: { paddingHorizontal: 16, gap: 8 },
+  logo: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0, borderRadius: radius.sm, cursor: "pointer" },
+  logoHover: { opacity: 0.8 },
   logoMark: {
     width: 30,
     height: 30,
@@ -282,6 +314,7 @@ const styles = StyleSheet.create({
   },
   logoMarkText: { color: "#FFFFFF", fontWeight: "800", fontSize: 17 },
   logoText: { fontSize: 20, fontWeight: "800", color: colors.text },
+  logoTextCompact: { fontSize: 18 },
   spacer: { flex: 1 },
   navRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   navScroll: { paddingHorizontal: 12, paddingBottom: 8, gap: 4 },
@@ -307,7 +340,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     cursor: "pointer",
   },
-  right: { flexDirection: "row", alignItems: "center", gap: 8 },
+  right: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1, minWidth: 0 },
   signIn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.sm, cursor: "pointer" },
   signInHover: { backgroundColor: colors.background },
   signInText: { fontSize: 14, fontWeight: "700", color: colors.brand },
@@ -319,8 +352,9 @@ const styles = StyleSheet.create({
     cursor: "pointer",
   },
   signUpHover: { backgroundColor: colors.brandDark },
+  authCompact: { paddingHorizontal: 10 },
   signUpText: { fontSize: 14, fontWeight: "700", color: "#FFFFFF" },
-  unknown: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.sm, backgroundColor: colors.warningSoft },
+  unknown: { flexShrink: 1, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.sm, backgroundColor: colors.warningSoft },
   unknownText: { fontSize: 12, fontWeight: "600", color: colors.warningText },
   accountWrap: { position: "relative" },
   account: {
@@ -373,4 +407,5 @@ const styles = StyleSheet.create({
   menuFutureText: { fontSize: 14, color: colors.muted },
   soon: { fontSize: 11, fontWeight: "700", color: colors.muted, backgroundColor: colors.background, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 },
   menuItemText: { fontSize: 14, fontWeight: "600", color: colors.error },
+  focus: { outlineWidth: 2, outlineStyle: "solid", outlineColor: colors.brand, outlineOffset: 2 },
 });
