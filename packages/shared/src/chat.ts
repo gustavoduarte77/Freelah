@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { publicJobStatusSchema } from "./jobs";
-import { interestStatusSchema } from "./interests";
+import { interestStatusSchema, inviteStateSchema } from "./interests";
 
 // Contrato do chat (PRD 18): uma conversa por interesse, entre quem demonstrou interesse e a dona da
 // oportunidade. As respostas nunca trazem telefone, e-mail nem ids de outras pessoas: cada mensagem
@@ -38,9 +38,22 @@ export const sendMessageResponseSchema = z.object({ message: chatMessageSchema }
 
 const conversationJobSchema = z.object({ id: z.string(), title: z.string(), status: publicJobStatusSchema });
 
+/** Dados públicos do serviço, para o convite e a confirmação de contratação. */
+const conversationJobDetailSchema = conversationJobSchema.extend({
+  proposedPriceCents: z.number().int().nonnegative(),
+  scheduledDate: z.string(),
+  startTime: z.string(),
+  city: z.string(),
+  state: z.string(),
+});
+
 export const conversationSchema = z.object({
   id: z.string(),
-  job: conversationJobSchema,
+  job: conversationJobDetailSchema,
+  /** Quem está vendo é o contratante (dono da oportunidade) ou o trabalhador. */
+  viewerIsOwner: z.boolean().default(false),
+  /** Situação da contratação nesta conversa. */
+  interest: z.object({ id: z.string(), status: interestStatusSchema, invite: inviteStateSchema }).optional(),
   other: z.object({ name: z.string() }),
   /** Se ainda dá para enviar mensagens (a conversa continua disponível para leitura). */
   canSend: z.boolean(),

@@ -23,10 +23,17 @@ type State =
 /** Situação de cada pessoa na ótica da contratante (o trabalhador vê outros rótulos em suas telas). */
 const OWNER_INTEREST_LABEL: Record<JobInterest["status"], string> = {
   PENDING: "Interessado",
-  ACCEPTED: "Selecionado",
+  ACCEPTED: "Contratado",
   REJECTED: "Não selecionado",
   WITHDRAWN: "Interesse retirado",
 };
+
+/** Rótulo do interessado considerando o convite de contratação. */
+function ownerLabel(interest: JobInterest): string {
+  if (interest.status === "PENDING" && interest.invite === "PENDING") return "Convite enviado · aguardando resposta";
+  if (interest.status === "PENDING" && interest.invite === "DECLINED") return "Convite recusado";
+  return OWNER_INTEREST_LABEL[interest.status];
+}
 
 const brDate = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
@@ -135,7 +142,13 @@ function InterestedList({ jobId }: { jobId: string }) {
         <EmptyBox title="Ninguém demonstrou interesse ainda" text="Quando alguém demonstrar, aparece aqui." />
       ) : (
         state.interests.map((interest) => (
-          <InterestedCard key={interest.id} interest={interest} canSelect={open} onChanged={() => void load()} />
+          <InterestedCard
+            key={interest.id}
+            interest={interest}
+            canInvite={open}
+            otherInvitePending={state.interests.some((item) => item.id !== interest.id && item.status === "PENDING" && item.invite === "PENDING")}
+            onChanged={() => void load()}
+          />
         ))
       )}
     </View>
@@ -144,12 +157,15 @@ function InterestedList({ jobId }: { jobId: string }) {
 
 function InterestedCard({
   interest,
-  canSelect,
+  canInvite,
+  otherInvitePending,
   onChanged,
 }: {
   interest: JobInterest;
-  /** A oportunidade ainda está aberta: dá para selecionar quem está pendente. */
-  canSelect: boolean;
+  /** A oportunidade ainda está aberta: dá para convidar quem está pendente. */
+  canInvite: boolean;
+  /** Há um convite aguardando resposta de outra pessoa (só um por vez). */
+  otherInvitePending: boolean;
   /** A API mudou o estado (ou recusou por ele ter mudado): recarrega a lista. */
   onChanged: () => void;
 }) {
@@ -159,26 +175,26 @@ function InterestedCard({
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
 
-  async function select() {
+  async function sendInvite() {
     if (inFlight.current) return; // ignora cliques repetidos antes de a tela atualizar
     inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
-      await myJobsApi.selectInterest(interest.id); // só vale com a resposta da API
+      await myJobsApi.inviteInterest(interest.id); // só vale com a resposta da API
       setConfirming(false);
       onChanged();
     } catch (caught) {
       const failure = caught as MyJobsApiError;
       setConfirming(false);
       if (failure.outcomeUnknown) {
-        setError("Não conseguimos confirmar a seleção. Atualizamos a lista: confira o estado antes de tentar de novo.");
+        setError("Não conseguimos confirmar o convite. Atualizamos a lista: confira o estado antes de tentar de novo.");
         onChanged();
       } else if (failure.kind === "invalid_state") {
         setError(failure.message);
         onChanged();
       } else {
-        setError(failure.kind === "unauthorized" ? failure.message : "Não foi possível selecionar. Nada foi alterado.");
+        setError(failure.kind === "unauthorized" ? failure.message : "Não foi possível enviar o convite. Nada foi alterado.");
       }
     } finally {
       inFlight.current = false;
@@ -192,7 +208,9 @@ function InterestedCard({
       <Text style={styles.meta}>
         {interest.worker.city} · demonstrou interesse em {brDate(interest.createdAt)}
       </Text>
-      <Text style={styles.status}>{OWNER_INTEREST_LABEL[interest.status]}</Text>
+      <Text style={styles.status} testID="interested-status">
+        {ownerLabel(interest)}
+      </Text>
       {interest.status === "PENDING" || interest.status === "ACCEPTED" ? (
         <Button title="Conversar" variant="secondary" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
       ) : null}
@@ -206,17 +224,27 @@ function InterestedCard({
           {error}
         </Text>
       ) : null}
-      {canSelect && interest.status === "PENDING" ? (
+      {canInvite && interest.status === "PENDING" && interest.invite !== "PENDING" ? (
         confirming ? (
-          <View style={styles.confirm} accessibilityRole="alert" testID="select-confirm">
+          <View style={styles.confirm} accessibilityRole="alert" testID="invite-confirm">
             <Text style={styles.confirmText}>
-              Selecionar {interest.worker.name}? As outras pessoas interessadas serão marcadas como não selecionadas e não dá para desfazer.
+              Convidar {interest.worker.name} para o serviço? A pessoa recebe o convite na conversa e decide se aceita. A vaga só é
+              preenchida quando ela aceitar.
             </Text>
-            <Button title="Confirmar seleção" onPress={() => void select()} loading={busy} disabled={busy} />
+            <Button title="Enviar convite" onPress={() => void sendInvite()} loading={busy} disabled={busy} />
             <Button title="Voltar" variant="link" onPress={() => setConfirming(false)} disabled={busy} />
           </View>
         ) : (
-          <Button title="Selecionar" onPress={() => setConfirming(true)} />
+          <>
+            <Button
+              title={interest.invite === "DECLINED" ? "Convidar de novo" : "Convidar para o serviço"}
+              onPress={() => setConfirming(true)}
+              disabled={otherInvitePending}
+            />
+            {otherInvitePending ? (
+              <Text style={styles.meta}>Há um convite aguardando resposta de outra pessoa. Só um convite por vez.</Text>
+            ) : null}
+          </>
         )
       ) : null}
     </View>

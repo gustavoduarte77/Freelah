@@ -139,7 +139,11 @@ export interface MyJobsApi {
 
   // --- Contratação (PRD 19 e 20) ---
   /** A dona seleciona uma pessoa entre as interessadas (não dá para desfazer). */
-  selectInterest(interestId: string): Promise<InterestResponse["interest"]>;
+  /** Contratante: envia o convite de contratação a quem demonstrou interesse. */
+  inviteInterest(interestId: string): Promise<InterestResponse["interest"]>;
+  /** Trabalhador: aceita o convite (contrata) ou o recusa. */
+  acceptInvite(interestId: string): Promise<InterestResponse["interest"]>;
+  declineInvite(interestId: string): Promise<InterestResponse["interest"]>;
   /** A dona registra que o serviço foi concluído. */
   complete(id: string): Promise<OwnJob>;
 
@@ -282,8 +286,20 @@ export function createMyJobsApi(options: { baseUrl: string; fetch: MyJobsFetch }
       );
       return result.interests;
     },
-    async selectInterest(interestId) {
-      const result = await request(`${root}/me/interests/${encodeURIComponent(interestId)}/select`, "POST", {}, (json) =>
+    async inviteInterest(interestId) {
+      const result = await request(`${root}/me/interests/${encodeURIComponent(interestId)}/invite`, "POST", {}, (json) =>
+        interestResponseSchema.safeParse(json),
+      );
+      return result.interest;
+    },
+    async acceptInvite(interestId) {
+      const result = await request(`${root}/me/interests/${encodeURIComponent(interestId)}/accept`, "POST", {}, (json) =>
+        interestResponseSchema.safeParse(json),
+      );
+      return result.interest;
+    },
+    async declineInvite(interestId) {
+      const result = await request(`${root}/me/interests/${encodeURIComponent(interestId)}/decline`, "POST", {}, (json) =>
         interestResponseSchema.safeParse(json),
       );
       return result.interest;

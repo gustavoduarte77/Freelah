@@ -13,6 +13,8 @@ import { Icon } from "../../components/Icon";
 import { Button, colors } from "../../components/ui";
 import { focusRing, noInnerOutline, radius } from "../../theme";
 import { LoadingBox } from "../jobs/components";
+import { HireBanner } from "./HireBanner";
+import { HireConfirmedModal, hasSeenHire, markHireSeen } from "./HireConfirmedModal";
 import { myJobsApi } from "../publish/api";
 
 type LoadState =
@@ -59,6 +61,8 @@ export function ChatPanel({
   const [text, setText] = useState("");
   const [send, setSend] = useState<SendState>({ kind: "idle" });
   const [inputFocused, setInputFocused] = useState(false);
+  // Interesse cuja confirmação de contratação está na tela (null = fechada).
+  const [confirmFor, setConfirmFor] = useState<string | null>(null);
   const cursor = useRef<string | null>(null);
   const polling = useRef(false);
   const sending = useRef(false);
@@ -90,12 +94,31 @@ export function ChatPanel({
       cursor.current = news.cursor ?? cursor.current;
       setMessages((current) => merge(current, news.messages));
       setPollFailed(false);
+      void refreshConversation();
     } catch {
       setPollFailed(true);
     } finally {
       polling.current = false;
     }
   }
+
+  /** Confere a situação real da conversa (convite, contratação); falha de rede não apaga nada. */
+  async function refreshConversation() {
+    try {
+      const conversation = await myJobsApi.conversation(conversationId);
+      setLoad({ status: "ready", conversation });
+    } catch {
+      // mantém o que já está na tela
+    }
+  }
+
+  // A confirmação de contratação aparece UMA vez por contratação, a partir do estado do servidor.
+  const hiredInterestId = load.status === "ready" && load.conversation.interest?.status === "ACCEPTED" ? load.conversation.interest.id : null;
+  const unseenHire = hiredInterestId && !hasSeenHire(hiredInterestId) ? hiredInterestId : null;
+  if (unseenHire && confirmFor !== unseenHire) setConfirmFor(unseenHire);
+  useEffect(() => {
+    if (confirmFor) markHireSeen(confirmFor); // marcada ao abrir: as próximas consultas não a reabrem
+  }, [confirmFor]);
 
   const ready = load.status === "ready";
   useEffect(() => {
@@ -194,6 +217,8 @@ export function ChatPanel({
         </Text>
       ) : null}
 
+      <HireBanner conversation={conversation} onChanged={refreshConversation} />
+
       <ScrollView
         ref={scroller}
         style={styles.messages}
@@ -212,6 +237,8 @@ export function ChatPanel({
           ))
         )}
       </ScrollView>
+
+      <HireConfirmedModal visible={confirmFor !== null} conversation={conversation} onClose={() => setConfirmFor(null)} />
 
       {conversation.canSend ? (
         <View style={styles.composer}>

@@ -11,6 +11,7 @@ import { Router, type RequestHandler, type Response } from "express";
 import type { Auth } from "../auth";
 import type { PrismaClient } from "../db";
 import { getSession, requireAuth } from "../middleware/require-auth";
+import { inviteOf } from "./interests";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE = 100;
@@ -65,8 +66,23 @@ export function createChatRouter(
 
   const conversationSelect = {
     id: true,
-    job: { select: { id: true, title: true, status: true, expiresAt: true, ownerId: true } },
-    interest: { select: { status: true, workerId: true, worker: { select: { name: true } } } },
+    job: {
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        expiresAt: true,
+        ownerId: true,
+        proposedPriceCents: true,
+        scheduledDate: true,
+        startTime: true,
+        city: true,
+        state: true,
+      },
+    },
+    interest: {
+      select: { id: true, status: true, invitedAt: true, inviteDeclinedAt: true, workerId: true, worker: { select: { name: true } } },
+    },
     participants: { select: { userId: true } },
   } as const;
 
@@ -90,7 +106,18 @@ export function createChatRouter(
     const reason = blockedReason(row.interest.status, status);
     return {
       id: row.id,
-      job: { id: row.job.id, title: row.job.title, status: status as PublicJobStatus },
+      job: {
+        id: row.job.id,
+        title: row.job.title,
+        status: status as PublicJobStatus,
+        proposedPriceCents: row.job.proposedPriceCents,
+        scheduledDate: row.job.scheduledDate.toISOString().slice(0, 10),
+        startTime: row.job.startTime,
+        city: row.job.city,
+        state: row.job.state,
+      },
+      viewerIsOwner: row.job.ownerId === me,
+      interest: { id: row.interest.id, status: row.interest.status, invite: inviteOf(row.interest) },
       other: { name: otherName(row, me) },
       canSend: reason === null,
       blockedReason: reason,

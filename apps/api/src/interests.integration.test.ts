@@ -271,7 +271,7 @@ describe.skipIf(!testDatabaseUrl)("interesses (integração)", () => {
     const created = await post(worker.agent, `/jobs/${job.id}/interest`);
     expect((await worker.agent.get(`/jobs/${job.id}/viewer`)).body).toEqual({
       isOwner: false,
-      interest: { id: created.body.interest.id, status: "PENDING" },
+      interest: { id: created.body.interest.id, status: "PENDING", invite: "NONE" },
     });
     expect((await stranger.agent.get(`/jobs/${job.id}/viewer`)).body.interest).toBeNull();
     expect((await owner.agent.get("/me/jobs")).body.jobs[0].interestCount).toBe(1);

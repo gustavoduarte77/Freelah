@@ -1,5 +1,5 @@
 import {
-  INTEREST_STATUS_LABEL,
+  workerInterestLabel,
   formatBrDate,
   formatPriceCents,
   type MyInterest,
@@ -138,7 +138,7 @@ function InterestsList() {
                   ? {
                       ...current,
                       interests: current.interests
-                        .map((item) => (item.id === changed.id ? { ...item, status: changed.status } : item))
+                        .map((item) => (item.id === changed.id ? { ...item, status: changed.status, invite: changed.invite } : item))
                         .filter((item) => item.status !== "WITHDRAWN"),
                     }
                   : current,
@@ -158,7 +158,7 @@ function InterestCard({
   onChanged,
 }: {
   interest: MyInterest;
-  onChanged: (changed: { id: string; status: MyInterest["status"] }) => void;
+  onChanged: (changed: { id: string; status: MyInterest["status"]; invite: MyInterest["invite"] }) => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -206,7 +206,7 @@ function InterestCard({
         Serviço em {formatBrDate(job.scheduledDate)} às {job.startTime} · contratante: {job.ownerName}
       </Text>
       <Text style={styles.interestStatus} testID="my-interest-status">
-        {INTEREST_STATUS_LABEL[interest.status]}
+        {workerInterestLabel(interest.status, interest.invite)}
       </Text>
       {error ? (
         <Text style={styles.errorText} accessibilityRole="alert" testID="my-interest-error">

@@ -1,4 +1,4 @@
-import { INTEREST_STATUS_LABEL, type JobViewerResponse, type MyJobsApiError } from "@freelah/shared";
+import { workerInterestLabel, type InterestResponse, type JobViewerResponse, type MyJobsApiError } from "@freelah/shared";
 import { useRouter, type Href } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -84,7 +84,7 @@ export function InterestAction({
     }
   }
 
-  async function run(request: () => Promise<{ id: string; status: "PENDING" | "ACCEPTED" | "REJECTED" | "WITHDRAWN" }>) {
+  async function run(request: () => Promise<InterestResponse["interest"]>) {
     if (inFlight.current) return; // ignora cliques repetidos antes de a tela atualizar
     inFlight.current = true;
     setAction({ kind: "busy" });
@@ -144,10 +144,10 @@ export function InterestAction({
       ) : interest && interest.status !== "WITHDRAWN" ? (
         <>
           <Text style={styles.success} accessibilityLiveRegion="polite" testID="interest-registered">
-            {INTEREST_STATUS_LABEL[interest.status]}
+            {workerInterestLabel(interest.status, interest.invite)}
           </Text>
           {interest.status === "PENDING" || interest.status === "ACCEPTED" ? (
-            <Button title="Conversar com o contratante" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
+            <Button title={interest.invite === "PENDING" ? "Ver o convite na conversa" : "Conversar com o contratante"} onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
           ) : null}
           {chat.error ? (
             <Text style={styles.errorText} accessibilityRole="alert" testID="chat-open-error">

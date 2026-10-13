@@ -240,7 +240,7 @@ describe("createMyJobsApi: erros", () => {
 describe("createMyJobsApi: interesses", () => {
   it("expressInterest faz POST /jobs/:id/interest e devolve o interesse", async () => {
     const { api, fetch } = setup(json(201, { interest: { id: "i1", status: "PENDING" } }));
-    expect(await api.expressInterest(ID)).toEqual({ id: "i1", status: "PENDING" });
+    expect(await api.expressInterest(ID)).toEqual({ id: "i1", status: "PENDING", invite: "NONE" });
     expect(fetch.mock.calls[0]![0]).toBe(`http://api.test/jobs/${ID}/interest`);
     expect(fetch.mock.calls[0]![1].method).toBe("POST");
   });
