@@ -9,7 +9,11 @@ import {
 } from "@freelah/shared";
 import { useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { Icon } from "../../components/Icon";
+import { InteractiveCard } from "../../components/InteractiveCard";
 import { Button, colors } from "../../components/ui";
+import { radius } from "../../theme";
+import { JobArt } from "./JobArt";
 import { useRecovery } from "../recovery/RecoveryProvider";
 
 export const STATUS_LABEL: Record<PublicJobStatus, string> = {
@@ -41,30 +45,43 @@ export function StatusBadge({ status }: { status: PublicJobStatus }) {
   );
 }
 
+/** Oportunidade em linha (visualização em lista e Home): ilustração pequena e dados lado a lado. */
 export function JobCard({ job }: { job: JobSummary }) {
   const router = useRouter();
   return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={`Abrir oportunidade ${job.title}`}
+    <InteractiveCard
+      label={`Abrir oportunidade ${job.title}`}
       onPress={() => router.push({ pathname: "/oportunidades/[id]", params: { id: job.id } })}
       style={styles.card}
     >
-      <View style={styles.badges}>
-        <Text style={styles.category}>{job.category.name}</Text>
-        {job.status !== "PUBLISHED" ? <StatusBadge status={job.status} /> : null}
-        {job.isDemo ? <DemoBadge /> : null}
+      <JobArt categorySlug={job.category.slug} iconSize={34} style={styles.thumb} />
+      <View style={styles.cardBody}>
+        <View style={styles.badges}>
+          <Text style={styles.category}>{job.category.name}</Text>
+          {job.status !== "PUBLISHED" ? <StatusBadge status={job.status} /> : null}
+          {job.isDemo ? <DemoBadge /> : null}
+        </View>
+        <Text style={styles.title}>{job.title}</Text>
+        <Text style={styles.excerpt} numberOfLines={2}>
+          {job.excerpt}
+        </Text>
+        <View style={styles.metaRow}>
+          <Icon name="pin" size={13} color={colors.muted} />
+          <Text style={styles.meta}>
+            {job.city}/{job.state}
+          </Text>
+          <Icon name="calendar" size={13} color={colors.muted} />
+          <Text style={styles.meta}>
+            {formatJobDate(job.scheduledDate)} às {job.startTime}
+          </Text>
+        </View>
       </View>
-      <Text style={styles.title}>{job.title}</Text>
-      <Text style={styles.excerpt}>{job.excerpt}</Text>
-      <Text style={styles.price}>
-        {formatPriceCents(job.proposedPriceCents)}
-        {job.negotiable ? <Text style={styles.negotiable}> · negociável</Text> : null}
-      </Text>
-      <Text style={styles.meta}>
-        {job.city}/{job.state} · {formatJobDate(job.scheduledDate)} às {job.startTime}
-      </Text>
-    </Pressable>
+      <View style={styles.priceCol}>
+        <Text style={styles.price}>{formatPriceCents(job.proposedPriceCents)}</Text>
+        {job.negotiable ? <Text style={styles.negotiable}>negociável</Text> : null}
+        <Text style={styles.open}>Ver detalhes</Text>
+      </View>
+    </InteractiveCard>
   );
 }
 
@@ -159,6 +176,7 @@ export function StaleNotice({
 export function EmptyBox({ title, text }: { title: string; text?: string }) {
   return (
     <View style={styles.center} accessibilityLiveRegion="polite">
+      <Icon name="inbox" size={36} color={colors.brandBorder} strokeWidth={1.5} />
       <Text style={styles.emptyTitle}>{title}</Text>
       {text ? <Text style={styles.muted}>{text}</Text> : null}
     </View>
@@ -220,13 +238,17 @@ export function formatLocalDate(iso: string): string {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
     padding: 16,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
+    gap: 16,
   },
+  thumb: { width: 104, height: 104, borderRadius: radius.md },
+  cardBody: { flex: 1, minWidth: 200, gap: 4 },
+  metaRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 2 },
+  priceCol: { alignItems: "flex-end", gap: 2, marginLeft: "auto" },
+  open: { fontSize: 13, fontWeight: "700", color: colors.brand, marginTop: 6 },
   badges: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   category: { fontSize: 12, fontWeight: "700", color: colors.brand, textTransform: "uppercase" },
   title: { fontSize: 18, fontWeight: "700", color: colors.text },
@@ -261,6 +283,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
+    cursor: "pointer",
   },
   chipActive: { backgroundColor: colors.brand, borderColor: colors.brand },
   chipText: { fontSize: 14, fontWeight: "600", color: colors.text },

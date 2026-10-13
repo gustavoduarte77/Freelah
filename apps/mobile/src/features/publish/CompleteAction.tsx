@@ -79,7 +79,7 @@ export function CompleteAction({ job, onJobUpdated }: { job: OwnJob; onJobUpdate
 
 const styles = StyleSheet.create({
   box: { gap: 6 },
-  confirm: { backgroundColor: "#E8F0FE", borderRadius: 12, padding: 12, gap: 6 },
+  confirm: { backgroundColor: "#EAF1FD", borderRadius: 12, padding: 12, gap: 6 },
   confirmText: { fontSize: 14, color: colors.text },
   error: { backgroundColor: "#FCE8E6", borderRadius: 12, padding: 12, gap: 6 },
   errorText: { fontSize: 14, color: colors.error },

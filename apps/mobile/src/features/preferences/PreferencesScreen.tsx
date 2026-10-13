@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  optionChecked: { borderColor: colors.brand, backgroundColor: "#EAF4F1" },
+  optionChecked: { borderColor: colors.brand, backgroundColor: "#EAF1FD" },
   optionText: { flex: 1, gap: 4 },
   optionTitle: { fontSize: 17, fontWeight: "700", color: colors.text },
   box: {

@@ -3,13 +3,14 @@ import {
   type MyJobsApiError,
   type OwnJob,
 } from "@freelah/shared";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, colors } from "../../src/components/ui";
 import { useSessionState } from "../../src/features/auth/SessionState";
-import { BackLink } from "../../src/features/jobs/BackLink";
+import { Breadcrumb } from "../../src/components/Breadcrumb";
+import { PAGE_PADDING, shadow } from "../../src/theme";
 import { EmptyBox, LoadingBox } from "../../src/features/jobs/components";
 import { useOpenChat } from "../../src/features/chat/useOpenChat";
 import { myJobsApi } from "../../src/features/publish/api";
@@ -37,10 +38,10 @@ export default function InterestedScreen() {
   const { state: sessionState, recheck } = useSessionState();
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
       <Stack.Screen options={{ title: "Interessados" }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <BackLink title="← Voltar" />
+        <Breadcrumb items={[{ label: "Minhas oportunidades", href: "/minhas-oportunidades" }, { label: "Interessados" }]} />
         <Text style={styles.title} accessibilityRole="header">
           Interessados
         </Text>
@@ -76,6 +77,18 @@ function InterestedList({ jobId }: { jobId: string }) {
       setState({ status: "error", error: error as MyJobsApiError });
     }
   }, [jobId]);
+
+  // Ao voltar para esta tela (por exemplo, depois de uma conversa), confere a lista de novo.
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      void load();
+    }, [load]),
+  );
 
   useEffect(() => {
     let active = true;
@@ -118,7 +131,6 @@ function InterestedList({ jobId }: { jobId: string }) {
           {state.job.hiredWorkerName}
         </Text>
       ) : null}
-      <Button title="Atualizar" variant="link" onPress={() => void load()} />
       {state.interests.length === 0 ? (
         <EmptyBox title="Ninguém demonstrou interesse ainda" text="Quando alguém demonstrar, aparece aqui." />
       ) : (
@@ -160,7 +172,8 @@ function InterestedCard({
       const failure = caught as MyJobsApiError;
       setConfirming(false);
       if (failure.outcomeUnknown) {
-        setError("Não conseguimos confirmar a seleção. Use “Atualizar” para conferir antes de tentar de novo.");
+        setError("Não conseguimos confirmar a seleção. Atualizamos a lista: confira o estado antes de tentar de novo.");
+        onChanged();
       } else if (failure.kind === "invalid_state") {
         setError(failure.message);
         onChanged();
@@ -181,7 +194,7 @@ function InterestedCard({
       </Text>
       <Text style={styles.status}>{OWNER_INTEREST_LABEL[interest.status]}</Text>
       {interest.status === "PENDING" || interest.status === "ACCEPTED" ? (
-        <Button title="Conversar" variant="link" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
+        <Button title="Conversar" variant="secondary" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
       ) : null}
       {chat.error ? (
         <Text style={styles.errorText} accessibilityRole="alert" testID="chat-open-error">
@@ -212,17 +225,17 @@ function InterestedCard({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { width: "100%", maxWidth: 720, alignSelf: "center", padding: 16, paddingBottom: 48, gap: 12 },
+  content: { width: "100%", maxWidth: 1000, alignSelf: "center", padding: PAGE_PADDING, paddingBottom: 48, gap: 12 },
   title: { fontSize: 26, fontWeight: "800", color: colors.text },
   gap: { gap: 12 },
   text: { fontSize: 15, color: colors.text },
   jobTitle: { fontSize: 18, fontWeight: "700", color: colors.text },
-  card: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, gap: 4 },
+  card: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, boxShadow: shadow.card, padding: 18, gap: 8 },
   name: { fontSize: 17, fontWeight: "700", color: colors.text },
   meta: { fontSize: 13, color: colors.muted },
   status: { fontSize: 14, fontWeight: "700", color: colors.brand },
   hired: { fontSize: 15, fontWeight: "700", color: colors.brand },
-  confirm: { backgroundColor: "#E8F0FE", borderRadius: 12, padding: 12, gap: 6 },
+  confirm: { backgroundColor: "#EAF1FD", borderRadius: 12, padding: 12, gap: 6 },
   confirmText: { fontSize: 14, color: colors.text },
   errorBox: { backgroundColor: "#FCE8E6", borderRadius: 12, padding: 14, gap: 8 },
   errorText: { color: colors.error, fontSize: 14 },

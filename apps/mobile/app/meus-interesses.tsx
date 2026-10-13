@@ -9,12 +9,16 @@ import { Stack, useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { InteractiveCard } from "../src/components/InteractiveCard";
 import { Button, colors } from "../src/components/ui";
+import { CONTENT_MAX_WIDTH, PAGE_PADDING, useBreakpoint } from "../src/theme";
 import { useSessionState } from "../src/features/auth/SessionState";
-import { BackLink } from "../src/features/jobs/BackLink";
 import { EmptyBox, LoadingBox, StatusBadge } from "../src/features/jobs/components";
 import { useOpenChat } from "../src/features/chat/useOpenChat";
 import { myJobsApi } from "../src/features/publish/api";
+
+/** Interesses retirados saem da lista (o registro continua na API); os demais estados continuam visíveis. */
+const activeOnly = (interests: MyInterest[]) => interests.filter((interest) => interest.status !== "WITHDRAWN");
 
 type ListState =
   | { status: "loading" }
@@ -27,13 +31,15 @@ export default function MyInterestsScreen() {
   const { state: sessionState, recheck } = useSessionState();
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
       <Stack.Screen options={{ title: "Meus interesses" }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <BackLink title="← Voltar" />
-        <Text style={styles.title} accessibilityRole="header">
-          Meus interesses
-        </Text>
+        <View style={styles.headerText}>
+          <Text style={styles.title} accessibilityRole="header">
+            Meus interesses
+          </Text>
+          <Text style={styles.subtitle}>Oportunidades em que você demonstrou interesse. Toque num cartão para abrir.</Text>
+        </View>
         {sessionState.status === "loading" ? (
           <LoadingBox label="Verificando sua sessão…" />
         ) : sessionState.status === "unknown" ? (
@@ -57,12 +63,14 @@ export default function MyInterestsScreen() {
 function InterestsList() {
   const router = useRouter();
   const [state, setState] = useState<ListState>({ status: "loading" });
+  const { width } = useBreakpoint();
+  const columns = width >= 1500 ? 3 : width >= 1000 ? 2 : 1;
 
   /** Recarrega a lista; se falhar, a que já estava na tela continua. */
   const load = useCallback(async () => {
     try {
       const interests = await myJobsApi.myInterests();
-      setState({ status: "ready", interests, refreshFailed: false });
+      setState({ status: "ready", interests: activeOnly(interests), refreshFailed: false });
     } catch (error) {
       setState((current) =>
         current.status === "ready" ? { ...current, refreshFailed: true } : { status: "error", error: error as MyJobsApiError },
@@ -84,7 +92,7 @@ function InterestsList() {
   useEffect(() => {
     let active = true;
     myJobsApi.myInterests().then(
-      (interests) => active && setState({ status: "ready", interests, refreshFailed: false }),
+      (interests) => active && setState({ status: "ready", interests: activeOnly(interests), refreshFailed: false }),
       (error: unknown) => active && setState({ status: "error", error: error as MyJobsApiError }),
     );
     return () => {
@@ -116,23 +124,30 @@ function InterestsList() {
       {state.refreshFailed ? (
         <Text style={styles.errorText}>Não foi possível atualizar agora; esta é a última lista carregada.</Text>
       ) : null}
-      <Button title="Atualizar" variant="link" onPress={() => void load()} />
       {state.interests.length === 0 ? (
         <EmptyBox title="Você ainda não demonstrou interesse em nada" text="Abra uma oportunidade em Explorar e toque em “Tenho interesse”." />
       ) : (
-        state.interests.map((interest) => (
+        <View style={styles.grid}>
+        {state.interests.map((interest) => (
+          <View key={interest.id} style={[styles.cell, { width: `${100 / columns}%` }]}>
           <InterestCard
-            key={interest.id}
             interest={interest}
             onChanged={(changed) =>
               setState((current) =>
                 current.status === "ready"
-                  ? { ...current, interests: current.interests.map((item) => (item.id === changed.id ? { ...item, status: changed.status } : item)) }
+                  ? {
+                      ...current,
+                      interests: current.interests
+                        .map((item) => (item.id === changed.id ? { ...item, status: changed.status } : item))
+                        .filter((item) => item.status !== "WITHDRAWN"),
+                    }
                   : current,
               )
             }
           />
-        ))
+          </View>
+        ))}
+        </View>
       )}
     </View>
   );
@@ -161,7 +176,7 @@ function InterestCard({
       const failure = caught as MyJobsApiError;
       setError(
         failure.outcomeUnknown
-          ? "Não conseguimos confirmar se o interesse foi retirado. Use “Atualizar” para conferir."
+          ? "Não conseguimos confirmar se o interesse foi retirado. Saia desta tela e volte para conferir o estado atual."
           : failure.kind === "unauthorized" || failure.kind === "invalid_state"
             ? failure.message
             : "Não foi possível retirar agora. Nada foi alterado.",
@@ -172,7 +187,12 @@ function InterestCard({
   }
 
   return (
-    <View style={styles.card} testID="my-interest">
+    <InteractiveCard
+      label={`Abrir oportunidade ${job.title}`}
+      onPress={() => router.push({ pathname: "/oportunidades/[id]", params: { id: job.id } })}
+      style={styles.card}
+      testID="my-interest"
+    >
       <View style={styles.badges}>
         <Text style={styles.category}>{job.category}</Text>
         <StatusBadge status={job.status} />
@@ -193,13 +213,9 @@ function InterestCard({
           {error}
         </Text>
       ) : null}
-      <Button
-        title="Ver oportunidade"
-        variant="link"
-        onPress={() => router.push({ pathname: "/oportunidades/[id]", params: { id: job.id } })}
-      />
+      <View style={styles.actions}>
       {interest.status === "PENDING" || interest.status === "ACCEPTED" ? (
-        <Button title="Conversar" variant="link" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
+        <Button title="Conversar" variant="secondary" onPress={() => void chat.open(interest.id)} loading={chat.busy} disabled={chat.busy} />
       ) : null}
       {chat.error ? (
         <Text style={styles.errorText} accessibilityRole="alert" testID="chat-open-error">
@@ -207,19 +223,25 @@ function InterestCard({
         </Text>
       ) : null}
       {interest.status === "PENDING" ? (
-        <Button title="Retirar interesse" variant="link" onPress={() => void withdraw()} loading={busy} disabled={busy} />
+        <Button title="Retirar interesse" variant="danger" onPress={() => void withdraw()} loading={busy} disabled={busy} />
       ) : null}
-    </View>
+      </View>
+    </InteractiveCard>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { width: "100%", maxWidth: 720, alignSelf: "center", padding: 16, paddingBottom: 48, gap: 12 },
-  title: { fontSize: 26, fontWeight: "800", color: colors.text },
+  content: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", padding: PAGE_PADDING, paddingBottom: 48, gap: 14 },
+  headerText: { gap: 4 },
+  title: { fontSize: 30, fontWeight: "800", color: colors.text },
+  subtitle: { fontSize: 15, color: colors.muted },
+  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -8 },
+  cell: { padding: 8 },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
   gap: { gap: 12 },
   text: { fontSize: 15, color: colors.text },
-  card: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, gap: 8 },
+  card: { padding: 18, gap: 8 },
   badges: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   category: { fontSize: 12, fontWeight: "700", color: colors.brand, textTransform: "uppercase" },
   jobTitle: { fontSize: 18, fontWeight: "700", color: colors.text },

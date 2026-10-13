@@ -1,25 +1,32 @@
 import type { Preferences, PreferencesSyncState } from "@freelah/shared";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { validatePriceRange } from "@freelah/shared";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Button } from "../src/components/ui";
+import { Icon } from "../src/components/Icon";
+import { Button, TextField } from "../src/components/ui";
+import { CategoryList, SIDEBAR_GAP, SIDEBAR_WIDTH, SidebarCard } from "../src/features/jobs/ExploreSidebar";
+import { JobGridCard } from "../src/features/jobs/JobGridCard";
+import {
+  CONTENT_MAX_WIDTH,
+  PAGE_PADDING,
+  WIDE_BREAKPOINT,
+  colors,
+  focusRing,
+  gradient,
+  noInnerOutline,
+  gridColumnsFor,
+  radius,
+  shadow,
+  useBreakpoint,
+} from "../src/theme";
 import { authClient } from "../src/lib/auth-client";
-import { useSessionState } from "../src/features/auth/SessionState";
 import {
   CategoryChips,
   ConnectionBanner,
   EmptyBox,
   ErrorBox,
-  JobCard,
   LoadingBox,
   StaleNotice,
 } from "../src/features/jobs/components";
@@ -49,30 +56,27 @@ function knownPreferences(state: PreferencesSyncState): Preferences | null {
 }
 
 // Constante fora do componente: os mesmos filtros em toda renderização.
-const RECENT_PARAMS = { limit: 4 };
+const RECENT_PARAMS = { limit: 6 };
 
 export default function Index() {
   const router = useRouter();
-  const { state: sessionState, recheck } = useSessionState();
-  const session = sessionState.status === "authenticated" ? sessionState.session : null;
+  const { width } = useBreakpoint();
   const {
     state: prefsState,
     retry: retryPrefs,
     complete,
     resolveInvalidLocal,
   } = usePreferencesSync();
-  const [signingOut, setSigningOut] = useState(false);
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [city, setCity] = useState("");
+  const [minText, setMinText] = useState("");
+  const [maxText, setMaxText] = useState("");
   const categories = useCategories();
   const recent = useJobsList("home", RECENT_PARAMS);
 
   async function signOut() {
-    setSigningOut(true);
-    try {
-      await authClient.signOut();
-    } finally {
-      setSigningOut(false);
-    }
+    await authClient.signOut();
   }
 
   // Onboarding, recuperação e carregamento das preferências substituem só o conteúdo desta tela.
@@ -110,29 +114,12 @@ export default function Index() {
   const publishFirst = Boolean(preferences?.wantsToHire && !preferences.wantsWork);
   const findWork = (
     <View key="find" style={styles.publish}>
-      <Button title="Encontrar trabalho" onPress={() => router.push("/explorar")} />
-      {session ? (
-        <Button
-          title="Meus interesses"
-          variant="link"
-          onPress={() => router.push("/meus-interesses" as Href)}
-        />
-      ) : null}
-      {session ? (
-        <Button title="Mensagens" variant="link" onPress={() => router.push("/mensagens" as Href)} />
-      ) : null}
+      <Button title="Encontrar trabalho" variant={publishFirst ? "secondary" : "primary"} onPress={() => router.push("/explorar")} />
     </View>
   );
   const publish = (
     <View key="publish" style={styles.publish}>
-      <Button title="Publicar oportunidade" onPress={() => router.push("/publicar")} />
-      {session ? (
-        <Button
-          title="Minhas oportunidades"
-          variant="link"
-          onPress={() => router.push("/minhas-oportunidades")}
-        />
-      ) : null}
+      <Button title="Publicar oportunidade" variant={publishFirst ? "primary" : "secondary"} onPress={() => router.push("/publicar")} />
     </View>
   );
 
@@ -140,29 +127,101 @@ export default function Index() {
     router.push({ pathname: "/explorar", params: search.trim() ? { q: search.trim() } : {} });
   }
 
+  // A mesma barra lateral de Explorar (categorias e filtros) fica aberta quando há espaço.
+  const sidebar = width >= WIDE_BREAKPOINT;
+  const columns = gridColumnsFor(
+    Math.min(width, CONTENT_MAX_WIDTH) - PAGE_PADDING * 2 - (sidebar ? SIDEBAR_WIDTH + SIDEBAR_GAP : 0),
+  );
+  const price = validatePriceRange(minText, maxText);
+
+  function applyFilters() {
+    if (!price.valid) return;
+    const params: Record<string, string> = {};
+    if (city.trim()) params.city = city.trim();
+    if (minText.trim()) params.min = minText.trim();
+    if (maxText.trim()) params.max = maxText.trim();
+    router.push({ pathname: "/explorar", params });
+  }
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-      <View style={styles.card}>
-        <Text style={styles.brand}>Freelah</Text>
-        <Text style={styles.tagline}>
-          Encontre uma oportunidade ou alguém para seu serviço.
-        </Text>
+        <View style={styles.layout}>
+        {sidebar ? (
+          <View style={styles.sidebar}>
+            <SidebarCard title="Categorias">
+              {categories.state.status === "ready" ? (
+                <CategoryList
+                  categories={categories.state.data}
+                  selected={null}
+                  onSelect={(slug) =>
+                    router.push({ pathname: "/explorar", params: slug ? { category: slug } : {} })
+                  }
+                />
+              ) : categories.state.status === "error" ? (
+                <ErrorBox error={categories.state.error} onRetry={categories.retry} />
+              ) : (
+                <LoadingBox label="Carregando categorias…" />
+              )}
+            </SidebarCard>
+            <SidebarCard title="Filtros">
+              <TextField label="Cidade" value={city} onChangeText={setCity} autoCapitalize="words" />
+              <TextField
+                label="Valor mínimo (R$)"
+                value={minText}
+                onChangeText={setMinText}
+                error={price.minError ?? price.rangeError}
+                keyboardType="numeric"
+              />
+              <TextField
+                label="Valor máximo (R$)"
+                value={maxText}
+                onChangeText={setMaxText}
+                error={price.maxError}
+                keyboardType="numeric"
+              />
+              <Button title="Ver resultados" variant="secondary" onPress={applyFilters} disabled={!price.valid} />
+            </SidebarCard>
+          </View>
+        ) : null}
+        <View style={styles.main}>
+        <View style={styles.hero}>
+          <View style={styles.heroText}>
+            <Text style={styles.heroTitle} accessibilityRole="header">
+              Encontre uma oportunidade ou alguém para o seu serviço
+            </Text>
+            <Text style={styles.tagline}>
+              Veja trabalhos abertos perto de você, demonstre interesse e converse direto com quem
+              contrata.
+            </Text>
+          </View>
+          <View style={styles.heroActions}>
+            <View style={[styles.searchBox, searchFocused ? focusRing : null]}>
+              <Icon name="search" size={18} color={colors.muted} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                onSubmitEditing={submitSearch}
+                placeholder="Buscar serviço ou oportunidade"
+                placeholderTextColor={colors.muted}
+                accessibilityLabel="Buscar oportunidades"
+                returnKeyType="search"
+                style={styles.searchInput}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+              />
+            </View>
+            <View style={styles.actions}>{publishFirst ? [publish, findWork] : [findWork, publish]}</View>
+          </View>
+        </View>
 
         <ConnectionBanner />
 
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          onSubmitEditing={submitSearch}
-          placeholder="Buscar serviço ou oportunidade"
-          accessibilityLabel="Buscar oportunidades"
-          returnKeyType="search"
-          style={styles.search}
-        />
-        <View style={styles.actions}>{publishFirst ? [publish, findWork] : [findWork, publish]}</View>
-
-        <Text style={styles.sectionTitle}>Categorias</Text>
+        {sidebar ? null : (
+          <>
+        <Text style={styles.sectionTitle} accessibilityRole="header">
+          Categorias
+        </Text>
         {categories.state.status === "ready" ? (
           <CategoryChips
             categories={categories.state.data}
@@ -176,8 +235,15 @@ export default function Index() {
         ) : (
           <LoadingBox label="Carregando categorias…" />
         )}
+          </>
+        )}
 
-        <Text style={styles.sectionTitle}>Oportunidades recentes</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            Oportunidades recentes
+          </Text>
+          <Button title="Ver todas" variant="link" onPress={() => router.push("/explorar")} />
+        </View>
         {recent.state.status === "loading" ? (
           <LoadingBox label="Carregando oportunidades…" />
         ) : recent.state.status === "error" ? (
@@ -195,101 +261,70 @@ export default function Index() {
                 text="Volte em breve: novas oportunidades aparecem aqui."
               />
             ) : (
-              <>
+              <View style={styles.grid}>
                 {recent.state.jobs.map((job) => (
-                  <JobCard key={job.id} job={job} />
+                  <View key={job.id} style={[styles.cell, { width: `${100 / columns}%` }]}>
+                    <JobGridCard job={job} />
+                  </View>
                 ))}
-                <Button
-                  title="Ver todas as oportunidades"
-                  variant="link"
-                  onPress={() => router.push("/explorar")}
-                />
-              </>
+              </View>
             )}
           </View>
         )}
-
-        <View style={styles.statusBox}>
-          {sessionState.status === "loading" ? (
-            <ActivityIndicator />
-          ) : sessionState.status === "unknown" ? (
-            <View accessibilityLiveRegion="polite" accessibilityRole="alert">
-              <Text style={styles.statusLabel}>Sessão</Text>
-              <Text style={styles.statusText}>Não foi possível verificar sua sessão</Text>
-              <Text style={styles.hint}>
-                O Freelah não conseguiu falar com o servidor. Sua conta e seus dados não foram
-                alterados. Vamos tentar de novo sozinhos.
-              </Text>
-              <Pressable onPress={recheck} style={styles.button} accessibilityRole="button">
-                <Text style={styles.buttonText}>Verificar de novo</Text>
-              </Pressable>
-            </View>
-          ) : session ? (
-            <>
-              <Text style={styles.statusLabel}>Você entrou como</Text>
-              <Text style={styles.statusText}>{session.user.name}</Text>
-              <Text style={styles.hint}>{session.user.email}</Text>
-              <Button title="Sair" variant="link" onPress={signOut} loading={signingOut} />
-            </>
-          ) : (
-            <>
-              <Button title="Entrar" onPress={() => router.push("/entrar")} />
-              <Button
-                title="Criar conta"
-                variant="link"
-                onPress={() => router.push("/cadastrar")}
-              />
-            </>
-          )}
         </View>
-      </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+const GAP = 20;
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F6F4EF" },
-  scroll: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 16 },
-  search: {
-    borderWidth: 1,
-    borderColor: "#D5DAE0",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: "#FFFFFF",
-    color: "#1F2933",
-  },
-  actions: { gap: 12 },
-  publish: { gap: 6 },
-  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#1F2933", marginTop: 8 },
-  recent: { gap: 12 },
-  card: {
+  screen: { flex: 1, backgroundColor: colors.background },
+  scroll: {
     width: "100%",
-    maxWidth: 720,
-    backgroundColor: "#FFFFFF",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
+    padding: PAGE_PADDING,
+    paddingBottom: 56,
+  },
+  layout: { flexDirection: "row", alignItems: "flex-start", gap: SIDEBAR_GAP },
+  sidebar: { width: SIDEBAR_WIDTH, gap: 16 },
+  main: { flex: 1, minWidth: 0, gap: 16 },
+  hero: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 24,
+    backgroundColor: colors.brandSoft,
+    ...gradient("linear-gradient(120deg, #FFFFFF 0%, #EAF1FD 55%, #D6E4FB 100%)"),
     borderRadius: 20,
-    padding: 24,
-    gap: 16,
+    borderWidth: 1,
+    borderColor: colors.brandBorder,
+    boxShadow: shadow.card,
+    padding: 36,
   },
-  brand: { fontSize: 36, fontWeight: "800", color: "#0F6B5C" },
-  tagline: { fontSize: 16, color: "#3C4650" },
-  statusBox: {
-    backgroundColor: "#F6F4EF",
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
+  heroText: { flex: 1, minWidth: 300, gap: 10 },
+  heroTitle: { fontSize: 32, fontWeight: "800", color: colors.text },
+  tagline: { fontSize: 17, color: colors.textSoft, lineHeight: 25 },
+  heroActions: { flex: 1, minWidth: 300, gap: 14 },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
   },
-  statusLabel: { fontSize: 13, fontWeight: "600", color: "#6B7580" },
-  statusText: { fontSize: 18, fontWeight: "600" },
-  hint: { fontSize: 13, color: "#6B7580" },
-  button: {
-    alignSelf: "flex-start",
-    backgroundColor: "#0F6B5C",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  buttonText: { color: "#FFFFFF", fontWeight: "600" },
+  searchInput: { flex: 1, paddingVertical: 14, fontSize: 16, color: colors.text, ...noInnerOutline },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  publish: { flexGrow: 1, flexBasis: 180 },
+  sectionTitle: { fontSize: 22, fontWeight: "800", color: colors.text, marginTop: 8 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  recent: { gap: 12 },
+  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -GAP / 2 },
+  cell: { padding: GAP / 2 },
 });

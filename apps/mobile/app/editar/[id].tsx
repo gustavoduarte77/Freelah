@@ -18,7 +18,8 @@ import { ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from "reac
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, colors } from "../../src/components/ui";
 import { useSessionState } from "../../src/features/auth/SessionState";
-import { BackLink } from "../../src/features/jobs/BackLink";
+import { Breadcrumb } from "../../src/components/Breadcrumb";
+import { PAGE_PADDING } from "../../src/theme";
 import { ConnectionBanner, ErrorBox, LoadingBox } from "../../src/features/jobs/components";
 import { useCategories } from "../../src/features/jobs/hooks";
 import { exploreJobsController, homeJobsController } from "../../src/features/jobs/registry";
@@ -83,7 +84,7 @@ export default function EditJobScreen() {
     <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ title: "Editar oportunidade" }} />
       <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <BackLink title="← Voltar" />
+        <Breadcrumb items={[{ label: "Minhas oportunidades", href: "/minhas-oportunidades" }, { label: "Editar oportunidade" }]} />
         <ConnectionBanner />
         <View
           style={styles.card}
@@ -355,13 +356,13 @@ function EditJob({ jobId, userId, scrollToY }: { jobId: string; userId: string; 
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { width: "100%", maxWidth: 640, alignSelf: "center", padding: 16, paddingBottom: 64, gap: 8 },
-  card: { backgroundColor: colors.surface, borderRadius: 20, padding: 20, gap: 14 },
-  title: { fontSize: 24, fontWeight: "800", color: colors.text },
+  content: { width: "100%", maxWidth: 1480, alignSelf: "center", padding: PAGE_PADDING, paddingBottom: 64, gap: 10 },
+  card: { gap: 16 },
+  title: { fontSize: 30, fontWeight: "800", color: colors.text },
   gap: { gap: 12 },
   text: { fontSize: 15, color: colors.text },
   success: { fontSize: 16, fontWeight: "700", color: colors.brand },
-  info: { backgroundColor: "#E8F0FE", borderRadius: 12, padding: 12 },
+  info: { backgroundColor: "#EAF1FD", borderRadius: 12, padding: 12 },
   infoText: { fontSize: 14, color: colors.text },
   error: { backgroundColor: "#FCE8E6", borderRadius: 12, padding: 12, gap: 6 },
   errorText: { fontSize: 14, color: colors.error },

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, colors } from "../src/components/ui";
+import { CONTENT_MAX_WIDTH, PAGE_PADDING, useBreakpoint } from "../src/theme";
 import { useSessionState } from "../src/features/auth/SessionState";
-import { BackLink } from "../src/features/jobs/BackLink";
 import { EmptyBox, LoadingBox, StaleNotice } from "../src/features/jobs/components";
 import { exploreJobsController, homeJobsController } from "../src/features/jobs/registry";
 import { myJobsApi } from "../src/features/publish/api";
@@ -23,13 +23,18 @@ export default function MyJobsScreen() {
   const { state: sessionState, recheck } = useSessionState();
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
       <Stack.Screen options={{ title: "Minhas oportunidades" }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <BackLink title="← Voltar" />
-        <Text style={styles.title} accessibilityRole="header">
-          Minhas oportunidades
-        </Text>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title} accessibilityRole="header">
+              Minhas oportunidades
+            </Text>
+            <Text style={styles.subtitle}>Rascunhos, publicações e serviços contratados. Toque num cartão para abrir.</Text>
+          </View>
+          <Button title="Publicar oportunidade" variant="secondary" onPress={() => router.push("/publicar")} />
+        </View>
         {sessionState.status === "loading" ? (
           <LoadingBox label="Verificando sua sessão…" />
         ) : sessionState.status === "unknown" ? (
@@ -61,6 +66,8 @@ function MyJobsList({ userId }: { userId: string }) {
   const router = useRouter();
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [reloading, setReloading] = useState(false);
+  const { width } = useBreakpoint();
+  const columns = width >= 1500 ? 3 : width >= 1000 ? 2 : 1;
 
   /** Recarrega a lista. Em falha, mantém o que já estava na tela. Devolve se conseguiu. */
   const load = useCallback(async (): Promise<boolean> => {
@@ -149,16 +156,19 @@ function MyJobsList({ userId }: { userId: string }) {
   return (
     <View style={styles.gap}>
       <StaleNotice loadedAt={state.loadedAt} refreshing={false} failed={state.refreshError !== null} />
-      <Button title="Atualizar" variant="link" onPress={() => void refresh()} loading={reloading} />
       {state.jobs.length === 0 ? (
         <EmptyBox
           title="Você ainda não criou nenhuma oportunidade"
           text="Quando criar, ela aparece aqui, inclusive os rascunhos."
         />
       ) : (
-        state.jobs.map((job) => (
-          <MyJobCard key={job.id} job={job} onJobUpdated={handleJobUpdated} />
-        ))
+        <View style={styles.grid}>
+          {state.jobs.map((job) => (
+            <View key={job.id} style={[styles.cell, { width: `${100 / columns}%` }]}>
+              <MyJobCard job={job} onJobUpdated={handleJobUpdated} />
+            </View>
+          ))}
+        </View>
       )}
     </View>
   );
@@ -166,8 +176,13 @@ function MyJobsList({ userId }: { userId: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { width: "100%", maxWidth: 720, alignSelf: "center", padding: 16, paddingBottom: 48, gap: 12 },
-  title: { fontSize: 26, fontWeight: "800", color: colors.text },
+  content: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", padding: PAGE_PADDING, paddingBottom: 48, gap: 14 },
+  header: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  headerText: { gap: 4, flexShrink: 1 },
+  title: { fontSize: 30, fontWeight: "800", color: colors.text },
+  subtitle: { fontSize: 15, color: colors.muted },
+  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -8 },
+  cell: { padding: 8 },
   gap: { gap: 12 },
   text: { fontSize: 15, color: colors.text },
   errorBox: { backgroundColor: "#FCE8E6", borderRadius: 12, padding: 14, gap: 8 },

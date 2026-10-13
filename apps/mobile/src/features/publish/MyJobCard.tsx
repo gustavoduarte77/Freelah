@@ -16,6 +16,7 @@ import {
 import { useRouter, type Href } from "expo-router";
 import { useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { InteractiveCard } from "../../components/InteractiveCard";
 import { Button, colors } from "../../components/ui";
 import { DemoBadge } from "../jobs/components";
 import { myJobsApi } from "./api";
@@ -129,11 +130,25 @@ export function MyJobCard({
     }
   }
 
+  // Clicar no cartão abre a oportunidade; rascunho ainda não é público, então abre a edição.
+  function openCard() {
+    if (job.status === "DRAFT") {
+      if (job.canEdit) router.push(`/editar/${job.id}` as Href);
+      return;
+    }
+    router.push({ pathname: "/oportunidades/[id]", params: { id: job.id } });
+  }
+
   const busy = action.kind === "publishing" || action.kind === "cancelling" || action.kind === "checking";
   const cancelling = action.kind === "cancelling" || (action.kind === "checking" && action.intent === "cancel");
 
   return (
-    <View style={styles.card} testID="my-job">
+    <InteractiveCard
+      label={`Abrir ${job.title}`}
+      onPress={openCard}
+      style={styles.card}
+      testID="my-job"
+    >
       <View style={styles.badges}>
         <Text style={styles.category}>{job.category.name}</Text>
         <View style={[styles.status, job.status === "DRAFT" ? styles.statusDraft : null]}>
@@ -160,9 +175,6 @@ export function MyJobCard({
         <Text style={styles.interested} testID="my-job-interested">
           {job.interestCount === 1 ? "1 pessoa interessada" : `${job.interestCount} pessoas interessadas`}
         </Text>
-      ) : null}
-      {job.interestCount > 0 || job.hiredWorkerName ? (
-        <Button title="Ver interessados" variant="link" onPress={() => router.push(`/interessados/${job.id}` as Href)} />
       ) : null}
       {job.canComplete ? <CompleteAction job={job} onJobUpdated={onJobUpdated} /> : null}
 
@@ -220,6 +232,14 @@ export function MyJobCard({
               {STILL_OPEN_MESSAGE}
             </Text>
           ) : null}
+          <View style={styles.actions}>
+          {job.interestCount > 0 || job.hiredWorkerName ? (
+            <Button
+              title="Ver interessados"
+              variant="secondary"
+              onPress={() => router.push(`/interessados/${job.id}` as Href)}
+            />
+          ) : null}
           {job.status === "DRAFT" ? (
             <Button
               title="Publicar"
@@ -231,7 +251,7 @@ export function MyJobCard({
           {job.canEdit ? (
             <Button
               title="Editar"
-              variant="link"
+              variant="secondary"
               onPress={() => router.push(`/editar/${job.id}` as Href)}
               disabled={busy}
             />
@@ -239,12 +259,13 @@ export function MyJobCard({
           {job.canCancel ? (
             <Button
               title="Cancelar oportunidade"
-              variant="link"
+              variant="danger"
               onPress={() => setAction({ kind: "cancel_confirming" })}
               loading={cancelling}
               disabled={busy}
             />
           ) : null}
+          </View>
         </>
       )}
 
@@ -260,19 +281,13 @@ export function MyJobCard({
         </Text>
       ) : null}
 
-      {job.status === "PUBLISHED" || job.status === "NEGOTIATING" ? (
-        <Button
-          title="Ver como aparece"
-          variant="link"
-          onPress={() => router.push({ pathname: "/oportunidades/[id]", params: { id: job.id } })}
-        />
-      ) : null}
-    </View>
+    </InteractiveCard>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, gap: 8 },
+  card: { padding: 18, gap: 8 },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
   badges: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   category: { fontSize: 12, fontWeight: "700", color: colors.brand, textTransform: "uppercase" },
   status: { backgroundColor: "#E6F4EA", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
@@ -280,11 +295,11 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: "700", color: colors.text },
   jobTitle: { fontSize: 18, fontWeight: "700", color: colors.text },
   meta: { fontSize: 13, color: colors.muted },
-  confirm: { backgroundColor: "#E8F0FE", borderRadius: 12, padding: 12, gap: 6 },
+  confirm: { backgroundColor: "#EAF1FD", borderRadius: 12, padding: 12, gap: 6 },
   confirmText: { fontSize: 14, color: colors.text },
   error: { backgroundColor: "#FCE8E6", borderRadius: 12, padding: 12, gap: 6 },
   errorText: { fontSize: 14, color: colors.error },
-  note: { fontSize: 14, color: colors.text, backgroundColor: "#E8F0FE", borderRadius: 10, padding: 10 },
+  note: { fontSize: 14, color: colors.text, backgroundColor: "#EAF1FD", borderRadius: 10, padding: 10 },
   interested: { fontSize: 14, fontWeight: "700", color: colors.brand },
   success: { fontSize: 14, fontWeight: "600", color: colors.brand },
 });

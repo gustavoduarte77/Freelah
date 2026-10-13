@@ -88,8 +88,8 @@ export function PublishReview({
             onPress={() => router.push({ pathname: "/oportunidades/[id]", params: { id: state.job.id } })}
           />
         ) : null}
-        <Button title="Minhas oportunidades" variant={published ? "link" : "primary"} onPress={() => router.push("/minhas-oportunidades")} />
-        <Button title="Publicar outra oportunidade" variant="link" onPress={startOver} />
+        <Button title="Minhas oportunidades" variant={published ? "secondary" : "primary"} onPress={() => router.push("/minhas-oportunidades")} />
+        <Button title="Publicar outra oportunidade" variant="secondary" onPress={startOver} />
       </View>
     );
   }
@@ -125,10 +125,10 @@ export function PublishReview({
         value={`${formatPriceCents(request.proposedPriceCents)}${request.negotiable ? " · negociável" : " · valor fixo"}`}
       />
       <Row label="Local" value={`${request.city}/${request.state}`} />
-      <Row label="Data e horário" value={`${formatBrDate(request.scheduledDate)} às ${request.startTime}`} />
+      <Row label="Data e horário do serviço" value={`${formatBrDate(request.scheduledDate)} às ${request.startTime}`} />
       <Row label="Publicada até" value={describeDeadline(deadline)} testID="review-deadline" />
       <Row label="Descrição" value={request.description} />
-      {request.additionalInfo ? <Row label="Informações adicionais" value={request.additionalInfo} /> : null}
+      {request.additionalInfo ? <Row label="Observações" value={request.additionalInfo} /> : null}
 
       {state.status === "failed" && state.error.kind !== "validation" ? (
         <View style={styles.errorBox} accessibilityRole="alert" accessibilityLiveRegion="assertive" testID="submit-error">
