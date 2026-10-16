@@ -41,6 +41,14 @@ npm run dev:api     # API em http://localhost:3333  (teste: /health)
 npm run dev:web     # app na Web em http://localhost:8081
 ```
 
+### Home e exploração
+
+- `/`: apresentação do FreeLah, como funciona e uma prévia de até três oportunidades recentes, carregadas da API com os mesmos cartões e estados de conexão usados no app.
+- `/explorar`: pesquisa completa, categorias, filtros de cidade e valor, lista/grade e paginação. A exploração continua pública.
+- Os botões de publicação usam `/publicar` e mantêm a verificação de sessão existente.
+
+Na primeira visita, a Home já pode ser vista sem preencher preferências. **Personalizar meus atalhos** abre a escolha existente de encontrar trabalho, contratar alguém ou ambos; essas preferências continuam apenas ordenando os atalhos. Quando há um problema nas preferências locais, **Revisar preferências deste aparelho** abre a recuperação existente. A sessão e as permissões não dependem dessa personalização.
+
 Para o celular (Expo Go):
 
 ```bash
@@ -56,6 +64,10 @@ EXPO_PUBLIC_API_URL=http://192.168.0.10:3333
 ```
 
 (descubra o IP com `ipconfig` no Windows) e reinicie o `npm run dev:mobile`. No Windows, permita a porta **3333** (e a 8081) no firewall quando for solicitado. A API já escuta em todas as interfaces de rede.
+
+## Modo Demonstração Offline
+
+Para apresentações sem API, banco nem internet: `npm run demo:web` e abrir http://localhost:8082 (conta `usuario@gmail.com` / `12345678`). Os dados são fictícios e o modo não existe no app normal. Detalhes em [docs/modo-demonstracao-offline.md](docs/modo-demonstracao-offline.md).
 
 ## Banco de dados (PostgreSQL + Prisma)
 

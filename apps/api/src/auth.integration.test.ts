@@ -30,7 +30,7 @@ describe.skipIf(!testDatabaseUrl)("autenticação (integração)", () => {
 
   beforeAll(() => {
     prisma = connectTestDatabase();
-    app = createApp(config, createAuth(config, prisma));
+    app = createApp(config, createAuth(config, prisma), prisma);
   });
 
   afterAll(async () => {

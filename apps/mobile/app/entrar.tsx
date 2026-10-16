@@ -1,5 +1,5 @@
-import { signInSchema } from "@freelah/shared";
-import { Stack, useRouter } from "expo-router";
+import { signInSchema, safeInternalRedirect } from "@freelah/shared";
+import { Stack, useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, Text } from "react-native";
 import { Button, colors, FormError, FormScreen, TextField } from "../src/components/ui";
@@ -9,6 +9,8 @@ import { authClient } from "../src/lib/auth-client";
 
 export default function SignInScreen() {
   const router = useRouter();
+  // Destino pedido por quem veio de uma ação protegida (só caminhos internos são aceitos).
+  const redirect = safeInternalRedirect(useLocalSearchParams<{ redirect?: string }>().redirect);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -30,7 +32,7 @@ export default function SignInScreen() {
         setFormError(authErrorMessage(error));
         return;
       }
-      router.dismissTo("/");
+      router.dismissTo((redirect ?? "/") as Href);
     } catch {
       setFormError(NETWORK_ERROR_MESSAGE);
     } finally {
@@ -67,7 +69,9 @@ export default function SignInScreen() {
       <Button
         title="Ainda não tenho conta. Criar conta"
         variant="link"
-        onPress={() => router.replace("/cadastrar")}
+        onPress={() =>
+          router.replace(redirect ? { pathname: "/cadastrar", params: { redirect } } : "/cadastrar")
+        }
       />
     </FormScreen>
   );

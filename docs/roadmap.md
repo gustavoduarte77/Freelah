@@ -9,8 +9,8 @@ Referência: PRD v2.0. Este arquivo registra o andamento, as simplificações ad
 | 0 | Monorepo, app Expo, API `/health`, pacote compartilhado, lint, documentação | 1 | Concluída |
 | 1 | Prisma 7 + Neon: tabelas, migração, seed de categorias | 1 | Concluída (migração e seed aplicados no Neon `production` e no banco local; 46 testes passando) |
 | 2 | Better Auth: cadastro (com declaração 18+), login, logout, sessão nas 3 plataformas | 1 | Concluída na API e na Web; falta conferir a sessão no celular (Expo Go) |
-| 3 | Onboarding, preferências (local e na conta), configurações, abas por preferência | 2 | Pendente |
-| 4 | Home, Explorar, busca, filtros, detalhes (públicos), identidade visual | 2 | Pendente |
+| 3 | Onboarding, preferências (local e na conta), configurações, abas por preferência | 2 | **Em andamento**: contrato compartilhado, API de preferências (`GET`/`PUT /me/preferences`) camada de armazenamento local e sincronização com a conta (testada em Chromium contra API e banco local) implementados e verificados; e onboarding (visitante e com sessão, com recuperação de dado local inválido; verificado no Chromium) implementados; pendentes configurações e abas |
+| 4 | Home, Explorar, busca, filtros, detalhes (públicos), identidade visual | 2 | **Em andamento**: API pública, contrato, telas de Explorar e Detalhes, Home mínima, seed de demonstração local e retorno ao detalhe após login implementados e verificados na Web (Chromium); pendentes abas, identidade visual e conferência no celular |
 | 5 | Publicar (revisão e rascunho), editar, cancelar, Minhas oportunidades, expiração | 3 | Pendente |
 | 6 | Interesse, lista de interessados, Meus interesses | 4 | Pendente |
 | 7 | Chat (consulta a cada 3 s, buscando só mensagens novas) | 4 | Pendente |
@@ -60,6 +60,35 @@ Referência: PRD v2.0. Este arquivo registra o andamento, as simplificações ad
 | Telemetria | Desligada, para funcionar offline e não enviar dados para fora |
 | Rota protegida | `requireAuth` + `GET /me`. As demais rotas protegidas (etapas seguintes) reutilizam o middleware |
 | Cookies entre domínios | Web e API em `localhost` (portas diferentes) são o mesmo site. No deploy, se ficarem em domínios diferentes, será preciso rever `SameSite`/`Secure` (etapa 10) |
+
+## Decisões da exploração (etapa 4)
+
+| Tema | Decisão |
+|---|---|
+| Visibilidade | A lista só traz `PUBLISHED` e `NEGOTIATING` dentro do prazo e com categoria ativa. O detalhe abre qualquer estado exceto rascunho, com aviso do estado e do motivo (PRD 13.4) |
+| Expiração | Calculada na leitura (`expiresAt`); a etapa 5 deve criar a rotina que grava `EXPIRED`. Uma oportunidade `NEGOTIATING` com prazo vencido também é tratada como expirada (regra a revisar nas etapas 5 e 8) |
+| Busca | Texto em título, descrição e categoria, sem acento-insensível (sem `unaccent`), com curingas do LIKE escapados |
+| Paginação | Cursor opaco por (`publishedAt`, `id`): estável com datas iguais |
+| Privacidade | Do contratante só nome e cidade; o telefone nunca sai da API pública |
+| Demonstração | Seed idempotente só no banco local (`db:seed:demo`); não há comando para o Neon |
+| Navegação | Pilha simples Home, Explorar, Detalhes; sem abas ainda. A preferência só reordena os atalhos da Home |
+| Ação protegida | "Tenho interesse" leva ao login e volta ao detalhe; o registro de interesse (etapa 6) não é simulado |
+
+## Decisões das preferências (etapa 3)
+
+| Tema | Decisão |
+|---|---|
+| Contrato | `packages/shared/src/preferences.ts`: `updatePreferencesSchema` (estrito, ao menos uma opção) e `preferencesResponseSchema`, usados pela API e, depois, pelo app |
+| Rotas | `GET /me/preferences` devolve `{ preferences: null }` para conta que ainda não escolheu (sinal para mostrar o onboarding). `PUT /me/preferences` grava (upsert) só a linha do usuário da sessão |
+| Erros | `400 at_least_one_required` (duas opções desativadas) e `400 validation_error` (campo desconhecido, inclusive `userId`, tipo errado ou corpo ausente). Mensagens em português |
+| Segurança | O id do usuário vem sempre da sessão. Resposta com `Cache-Control: no-store`. A regra "ao menos uma opção" vale na API e no banco (CHECK) |
+| Preferências não são permissões | A rota só toca em `UserPreference`; testes provam que publicações, interesses, conversas, mensagens e perfil não mudam |
+| `createApp` | Com autenticação, o Prisma é obrigatório (sobrecargas de tipo): nenhuma rota que depende do banco some em silêncio |
+| Armazenamento local | Implementado em `packages/shared/src/preferences-storage.ts` (interface `LocalPreferencesStore`: `read`, `save`, `clear`), com `localStorage` na Web e `expo-secure-store` no celular, sem dependência nova. A lógica e os adaptadores ficam em `shared` e recebem `localStorage`/SecureStore por parâmetro (testáveis sem React Native); `apps/mobile/src/features/preferences/localPreferences.ts` só escolhe o armazenamento real por `Platform.OS`. Guarda o JSON exato do contrato na chave `freelah.preferences`, a única que o módulo toca (as do Better Auth ficam intactas) |
+| Erros de armazenamento | `null` só significa "nada gravado". Dado inválido gera `invalid_data` e **não é apagado sozinho**; falhas geram `unavailable`, `read_failed` ou `write_failed`, nunca `null`. `save` valida antes de tocar no armazenamento e não parece bem-sucedido se falhar |
+| Limitação no iOS | O SecureStore usa o Keychain, que pode sobreviver à desinstalação do app: uma preferência antiga pode reaparecer após reinstalar. O onboarding precisa considerar isso |
+| Primeiro login (implementado) | Conta sem preferências recebe as locais; conta com preferências prevalece sobre as locais; o onboarding só aparece sem preferências locais nem na conta (estado `needs_onboarding`). Falhas nunca são "sem preferências". Logout apaga a cópia local só se estava sincronizada. Corrida entre dois aparelhos no primeiro login é limitação aceita no MVP |
+| Navegação (a implementar) | Telas ainda inexistentes aparecem como placeholders "Em breve", sem simular funcionalidade pronta |
 
 ## Fora do escopo do protótipo (PRD seção 35)
 

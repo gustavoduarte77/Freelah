@@ -9,9 +9,26 @@ import type { HealthResponse } from "@freelah/shared";
 import { toNodeHandler } from "better-auth/node";
 import type { Auth } from "./auth";
 import type { Config } from "./config";
+import type { PrismaClient } from "./db";
+import { createJobsRouter } from "./routes/jobs";
 import { createMeRouter } from "./routes/me";
+import { createChatRouter } from "./routes/chat";
+import { createInterestsRouter } from "./routes/interests";
+import { createMyJobsRouter } from "./routes/my-jobs";
+import { createPreferencesRouter } from "./routes/preferences";
 
-export function createApp(config: Pick<Config, "CORS_ORIGINS">, auth?: Auth): Express {
+// Com autenticação, o banco é obrigatório: assim nenhuma rota que depende dele some em silêncio.
+export function createApp(config: Pick<Config, "CORS_ORIGINS">): Express;
+export function createApp(
+  config: Pick<Config, "CORS_ORIGINS">,
+  auth: Auth,
+  prisma: PrismaClient,
+): Express;
+export function createApp(
+  config: Pick<Config, "CORS_ORIGINS">,
+  auth?: Auth,
+  prisma?: PrismaClient,
+): Express {
   const app = express();
 
   app.disable("x-powered-by");
@@ -31,6 +48,12 @@ export function createApp(config: Pick<Config, "CORS_ORIGINS">, auth?: Auth): Ex
   });
 
   if (auth) app.use(createMeRouter(auth));
+  if (auth && prisma) app.use(createPreferencesRouter(auth, prisma));
+  if (auth && prisma) app.use(createMyJobsRouter(auth, prisma));
+  if (auth && prisma) app.use(createInterestsRouter(auth, prisma));
+  if (auth && prisma) app.use(createChatRouter(auth, prisma));
+  // Categorias e oportunidades são públicas (PRD 9): não dependem de sessão.
+  if (prisma) app.use(createJobsRouter(prisma));
 
   const notFound: RequestHandler = (_req, res) => {
     res.status(404).json({ error: "not_found", message: "Rota não encontrada." });
@@ -38,6 +61,12 @@ export function createApp(config: Pick<Config, "CORS_ORIGINS">, auth?: Auth): Ex
   app.use(notFound);
 
   const onError: ErrorRequestHandler = (err, _req, res, _next) => {
+    // Corpo malformado ou grande demais é erro de quem enviou (4xx), não falha do servidor.
+    const status = (err as { status?: unknown }).status;
+    if (status === 400 || status === 413) {
+      res.status(status).json({ error: "bad_request", message: "Não foi possível ler os dados enviados." });
+      return;
+    }
     console.error(err);
     res
       .status(500)

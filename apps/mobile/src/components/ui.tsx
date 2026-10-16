@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,16 +12,11 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { colors, radius, shadow } from "../theme";
+import { InfoTip } from "./InfoTip";
 
-export const colors = {
-  brand: "#0F6B5C",
-  background: "#F6F4EF",
-  surface: "#FFFFFF",
-  text: "#1F2933",
-  muted: "#6B7580",
-  border: "#D5DAE0",
-  error: "#B3261E",
-};
+// Os tokens vivem em src/theme; este reexport mantém os imports antigos funcionando.
+export { colors };
 
 /** Tela centralizada em um cartão, com rolagem e ajuste para o teclado. */
 export function FormScreen({ children }: { children: ReactNode }) {
@@ -45,13 +40,21 @@ export function FormScreen({ children }: { children: ReactNode }) {
 interface TextFieldProps extends TextInputProps {
   label: string;
   error?: string | undefined;
+  /** Explicação curta, mostrada num balão ao lado do rótulo. */
+  help?: string;
+  /** Referência do campo, para o formulário levar o foco ao próximo. */
+  inputRef?: Ref<TextInput>;
 }
 
-export function TextField({ label, error, style, ...input }: TextFieldProps) {
+export function TextField({ label, error, help, inputRef, style, ...input }: TextFieldProps) {
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      <View style={styles.labelRow}>
+        <Text style={styles.label}>{label}</Text>
+        {help ? <InfoTip text={help} label={label} /> : null}
+      </View>
       <TextInput
+        ref={inputRef}
         accessibilityLabel={label}
         placeholderTextColor={colors.muted}
         style={[styles.input, error ? styles.inputError : null, style]}
@@ -70,23 +73,37 @@ interface ButtonProps {
   title: string;
   onPress: () => void;
   loading?: boolean;
-  variant?: "primary" | "link";
+  disabled?: boolean;
+  variant?: "primary" | "secondary" | "danger" | "link";
 }
 
-export function Button({ title, onPress, loading = false, variant = "primary" }: ButtonProps) {
-  const isLink = variant === "link";
+export function Button({
+  title,
+  onPress,
+  loading = false,
+  disabled = false,
+  variant = "primary",
+}: ButtonProps) {
+  const isPrimary = variant === "primary";
+  const inactive = loading || disabled;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled: loading, busy: loading }}
-      disabled={loading}
+      accessibilityState={{ disabled: inactive, busy: loading }}
+      disabled={inactive}
       onPress={onPress}
-      style={[isLink ? styles.link : styles.button, loading ? styles.disabled : null]}
+      style={({ pressed, hovered, focused }: { pressed: boolean; hovered?: boolean; focused?: boolean }) => [
+        variant === "link" ? styles.link : isPrimary ? styles.button : variant === "danger" ? styles.danger : styles.secondary,
+        hovered && !inactive ? (isPrimary ? styles.buttonHover : variant === "danger" ? styles.dangerHover : styles.softHover) : null,
+        pressed && !inactive ? styles.pressed : null,
+        focused ? styles.focus : null,
+        inactive ? styles.disabled : null,
+      ]}
     >
       {loading ? (
-        <ActivityIndicator color={isLink ? colors.brand : "#FFFFFF"} />
+        <ActivityIndicator color={isPrimary ? "#FFFFFF" : colors.brand} />
       ) : (
-        <Text style={isLink ? styles.linkText : styles.buttonText}>{title}</Text>
+        <Text style={isPrimary ? styles.buttonText : variant === "danger" ? styles.dangerText : styles.linkText}>{title}</Text>
       )}
     </Pressable>
   );
@@ -110,15 +127,19 @@ const styles = StyleSheet.create({
     maxWidth: 480,
     backgroundColor: colors.surface,
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    boxShadow: shadow.card,
     padding: 24,
     gap: 16,
   },
   field: { gap: 6 },
+  labelRow: { flexDirection: "row", alignItems: "center", gap: 4, zIndex: 2 },
   label: { fontSize: 14, fontWeight: "600", color: colors.text },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
+    borderRadius: radius.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
@@ -130,13 +151,47 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: colors.brand,
     paddingVertical: 14,
-    borderRadius: 12,
+    paddingHorizontal: 18,
+    borderRadius: radius.md,
     alignItems: "center",
+    cursor: "pointer",
   },
+  buttonHover: { backgroundColor: colors.brandDark },
   buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
-  link: { paddingVertical: 8, alignItems: "center" },
+  secondary: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.brandBorder,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    borderRadius: radius.md,
+    alignItems: "center",
+    cursor: "pointer",
+  },
+  danger: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: "#E9B8B3",
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    borderRadius: radius.md,
+    alignItems: "center",
+    cursor: "pointer",
+  },
+  dangerHover: { backgroundColor: colors.errorSoft },
+  dangerText: { color: colors.error, fontSize: 15, fontWeight: "700" },
+  softHover: { backgroundColor: colors.brandSoft },
+  link: {
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: radius.sm,
+    alignItems: "center",
+    cursor: "pointer",
+  },
   linkText: { color: colors.brand, fontSize: 15, fontWeight: "600" },
-  disabled: { opacity: 0.7 },
-  banner: { backgroundColor: "#FCE8E6", borderRadius: 10, padding: 12 },
+  pressed: { opacity: 0.85 },
+  focus: { outlineWidth: 2, outlineStyle: "solid", outlineColor: colors.brand, outlineOffset: 2 },
+  disabled: { opacity: 0.55, cursor: "default" },
+  banner: { backgroundColor: colors.errorSoft, borderRadius: radius.sm, padding: 12 },
   bannerText: { color: colors.error, fontSize: 14 },
 });
