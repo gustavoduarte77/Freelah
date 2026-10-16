@@ -4,7 +4,7 @@ import { API_URL } from "../../lib/api";
 const TIMEOUT_MS = 8000;
 
 // Rotas públicas: sem cookie nem credenciais. O prazo vale também para a leitura do corpo.
-const publicFetch: PublicFetch = async (url) => {
+export const publicFetch: PublicFetch = async (url) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {

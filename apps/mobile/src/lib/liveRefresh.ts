@@ -48,7 +48,8 @@ export function notifyDataChanged(jobsChanged: boolean): boolean {
 // escolhida na lista de /mensagens, e nesse caso a URL não muda). Só o Modo Demonstração lê isso,
 // para mostrar os controles apenas enquanto a conversa está aberta.
 
-let chatsOnScreen = 0;
+/** Conversas visíveis agora, na ordem em que entraram em foco (a última é a ativa). */
+const chatsOnScreen: string[] = [];
 const chatListeners = new Set<Listener>();
 
 export const subscribeChatPresence = (listener: Listener): (() => void) => {
@@ -57,22 +58,25 @@ export const subscribeChatPresence = (listener: Listener): (() => void) => {
     chatListeners.delete(listener);
   };
 };
-export const isChatOnScreen = (): boolean => chatsOnScreen > 0;
+export const isChatOnScreen = (): boolean => chatsOnScreen.length > 0;
+/** Conversa visível mais recente (a que os controles da demonstração comandam), ou `null`. */
+export const activeChatId = (): string | null => chatsOnScreen.at(-1) ?? null;
 
 /**
  * Declara que um painel de conversa está na tela: montado E com a tela em foco. O Stack do
  * expo-router mantém a tela anterior montada (escondida) quando se navega para outra, então só
  * estar montado não basta.
  */
-export function useChatPresence() {
+export function useChatPresence(conversationId: string) {
   useFocusEffect(
     useCallback(() => {
-      chatsOnScreen += 1;
+      chatsOnScreen.push(conversationId);
       chatListeners.forEach((listener) => listener());
       return () => {
-        chatsOnScreen -= 1;
+        const index = chatsOnScreen.lastIndexOf(conversationId);
+        if (index > -1) chatsOnScreen.splice(index, 1);
         chatListeners.forEach((listener) => listener());
       };
-    }, []),
+    }, [conversationId]),
   );
 }

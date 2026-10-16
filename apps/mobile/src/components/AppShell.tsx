@@ -17,6 +17,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { label: "Explorar", href: "/explorar", match: ["/explorar", "/oportunidades"], icon: "search" },
+  { label: "Profissionais", href: "/profissionais" as Href, match: ["/profissionais"], icon: "wrench" },
   { label: "Publicar", href: "/publicar", match: ["/publicar"], icon: "briefcase" },
   {
     label: "Minhas oportunidades",

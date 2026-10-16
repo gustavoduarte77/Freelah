@@ -1,5 +1,5 @@
 import { notifyDataChanged } from "../lib/liveRefresh";
-import { INVITE_STEP, TOTAL_STEPS } from "./data";
+import { HIRE_ACCEPT_STEP, HIRE_TOTAL_STEPS, INVITE_STEP, TOTAL_STEPS } from "./data";
 
 // Estado local do Modo Demonstração. Fica só neste navegador (localStorage), nunca vai a servidor
 // algum e é totalmente descartável: "Reiniciar" volta ao começo do roteiro.
@@ -20,6 +20,13 @@ export interface DemoState {
   /** Interesses (extras) demonstrados durante a apresentação e interesses retirados. */
   extraInterestJobIds: string[];
   withdrawnInterestIds: string[];
+  // --- Segundo roteiro (Lucas contrata Roberto), independente do da pintura ---
+  /** Etapa do roteiro da contratação, de 1 a HIRE_TOTAL_STEPS. */
+  hireStep: number;
+  /** Lucas já enviou o convite a Roberto (pelo botão da conversa ou da lista de interessados). */
+  hireInvited: boolean;
+  /** Mesmo papel do `epoch`, para este roteiro: a confirmação de contratação volta a aparecer a cada repetição. */
+  hireEpoch: number;
 }
 
 const STORAGE_KEY = "freelah:demo:state:v1";
@@ -31,6 +38,9 @@ const INITIAL: DemoState = {
   epoch: 0,
   extraInterestJobIds: [],
   withdrawnInterestIds: [],
+  hireStep: 1,
+  hireInvited: false,
+  hireEpoch: 0,
 };
 
 function load(): DemoState {
@@ -39,6 +49,7 @@ function load(): DemoState {
     if (!raw) return { ...INITIAL };
     const value = JSON.parse(raw) as Partial<DemoState>;
     const step = Number(value.step);
+    const hireStep = Number(value.hireStep);
     return {
       loggedIn: value.loggedIn === true,
       step: Number.isInteger(step) && step >= 1 && step <= TOTAL_STEPS ? step : 1,
@@ -46,6 +57,10 @@ function load(): DemoState {
       epoch: Number.isInteger(value.epoch) ? (value.epoch as number) : 0,
       extraInterestJobIds: Array.isArray(value.extraInterestJobIds) ? value.extraInterestJobIds.filter((v) => typeof v === "string") : [],
       withdrawnInterestIds: Array.isArray(value.withdrawnInterestIds) ? value.withdrawnInterestIds.filter((v) => typeof v === "string") : [],
+      // Estados salvos antes deste roteiro existir começam do início dele.
+      hireStep: Number.isInteger(hireStep) && hireStep >= 1 && hireStep <= HIRE_TOTAL_STEPS ? hireStep : 1,
+      hireInvited: value.hireInvited === true,
+      hireEpoch: Number.isInteger(value.hireEpoch) ? (value.hireEpoch as number) : 0,
     };
   } catch {
     return { ...INITIAL };
@@ -58,7 +73,8 @@ let version = 0;
 const listeners = new Set<() => void>();
 
 function commit(next: DemoState, refresh: boolean) {
-  const jobsChanged = (state.response === "accepted") !== (next.response === "accepted");
+  const jobsChanged =
+    (state.response === "accepted") !== (next.response === "accepted") || isHireAccepted(state) !== isHireAccepted(next);
   state = next;
   try {
     globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -95,9 +111,42 @@ export function back() {
   commit({ ...state, step: state.step - 1 }, true);
 }
 
-/** Reinício completo: roteiro, convite, contratação e interesses feitos durante a apresentação. */
+/** Reinício completo: os dois roteiros, convites, contratações e interesses feitos durante a apresentação. */
 export function reset() {
-  commit({ ...INITIAL, loggedIn: state.loggedIn, epoch: state.epoch + 1 }, true);
+  commit({ ...INITIAL, loggedIn: state.loggedIn, epoch: state.epoch + 1, hireEpoch: state.hireEpoch + 1 }, true);
+}
+
+// --- Segundo roteiro: Lucas contrata Roberto ---
+
+export const isHireAccepted = (s: DemoState): boolean => s.hireStep >= HIRE_ACCEPT_STEP;
+
+/** O roteiro para antes do aceite até Lucas enviar o convite (pelo botão, como no app real). */
+export const isHireWaitingInvite = (s: DemoState): boolean => s.hireStep === HIRE_ACCEPT_STEP - 1 && !s.hireInvited;
+
+export function advanceHire() {
+  if (state.hireStep >= HIRE_TOTAL_STEPS || isHireWaitingInvite(state)) return;
+  commit({ ...state, hireStep: state.hireStep + 1 }, true);
+}
+
+/** Volta uma etapa; desfaz primeiro o aceite e depois o convite, na ordem inversa em que aconteceram. */
+export function backHire() {
+  if (isHireAccepted(state)) {
+    commit({ ...state, hireStep: state.hireStep - 1, hireEpoch: state.hireEpoch + 1 }, true);
+    return;
+  }
+  if (state.hireInvited) {
+    commit({ ...state, hireInvited: false }, true);
+    return;
+  }
+  if (state.hireStep <= 1) return;
+  commit({ ...state, hireStep: state.hireStep - 1 }, true);
+}
+
+/** Convite de Lucas a Roberto. Só vale depois de combinarem o serviço na conversa e uma vez. */
+export function inviteHire(): boolean {
+  if (state.hireStep !== HIRE_ACCEPT_STEP - 1 || state.hireInvited) return false;
+  commit({ ...state, hireInvited: true }, true);
+  return true;
 }
 
 // --- Sessão e ações do usuário ---
