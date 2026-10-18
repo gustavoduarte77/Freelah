@@ -14,12 +14,14 @@ export const DEMO_USER = {
   city: "Cataguases",
 };
 
+// Os ids têm formato de UUID porque o formulário de publicar valida `categoryId` com o mesmo esquema
+// da API real (que exige UUID). São fixos e só existem neste modo.
 export const CATEGORIES = [
-  { id: "demo-cat-domesticos", slug: "servicos-domesticos", name: "Serviços Domésticos" },
-  { id: "demo-cat-comerciais", slug: "servicos-comerciais", name: "Serviços Comerciais" },
-  { id: "demo-cat-construcao", slug: "construcao-civil", name: "Construção Civil" },
-  { id: "demo-cat-manutencao", slug: "servicos-de-manutencao", name: "Serviços de Manutenção" },
-  { id: "demo-cat-aulas", slug: "aulas-particulares", name: "Aulas Particulares" },
+  { id: "d3a10001-0000-4000-8000-000000000001", slug: "servicos-domesticos", name: "Serviços Domésticos" },
+  { id: "d3a10001-0000-4000-8000-000000000002", slug: "servicos-comerciais", name: "Serviços Comerciais" },
+  { id: "d3a10001-0000-4000-8000-000000000003", slug: "construcao-civil", name: "Construção Civil" },
+  { id: "d3a10001-0000-4000-8000-000000000004", slug: "servicos-de-manutencao", name: "Serviços de Manutenção" },
+  { id: "d3a10001-0000-4000-8000-000000000005", slug: "aulas-particulares", name: "Aulas Particulares" },
 ] as const;
 
 type CategorySlug = (typeof CATEGORIES)[number]["slug"];
@@ -62,6 +64,8 @@ export interface DemoJob {
   ownerCity: string;
   /** Pertence à conta de demonstração (aparece em "Minhas oportunidades"). */
   mine: boolean;
+  /** Criada durante a apresentação e ainda não publicada: só a dona a vê. */
+  draft?: boolean;
   publishedAt: string;
   expiresAt: string;
   createdAt: string;

@@ -1,4 +1,14 @@
-import { describeJobAvailability, type InviteState, type InterestStatus, type PublicJobStatus } from "@freelah/shared";
+import {
+  JOB_VALIDATION_MESSAGE,
+  createJobSchema,
+  describeJobAvailability,
+  jobFieldErrors,
+  makeExcerpt,
+  validateJobSchedule,
+  type InviteState,
+  type InterestStatus,
+  type PublicJobStatus,
+} from "@freelah/shared";
 import {
   CATEGORIES,
   DEMO_EMAIL,
@@ -25,7 +35,18 @@ import {
   SCRIPT_OTHER_PROFILE_ID,
   type DemoJob,
 } from "./data";
-import { addExtraInterest, getState, inviteHire, isHireAccepted, respondToInvite, setLoggedIn, withdrawInterest } from "./store";
+import {
+  addExtraInterest,
+  createJob,
+  getState,
+  inviteHire,
+  isHireAccepted,
+  publishCreatedJob,
+  respondToInvite,
+  setLoggedIn,
+  withdrawInterest,
+  type CreatedJob,
+} from "./store";
 
 // "Servidor" do Modo Demonstração: responde, em memória, às mesmas rotas e com os mesmos formatos
 // da API real (os clientes do app validam tudo com os contratos compartilhados). Nenhuma chamada
@@ -47,6 +68,46 @@ const NOT_AVAILABLE = "Esta ação não está disponível na demonstração offl
 const notAvailable = () => fail(409, "demo_readonly", NOT_AVAILABLE);
 
 const BOOT = new Date().toISOString();
+
+// --- Oportunidades: as do roteiro (constantes) mais as criadas durante a apresentação ---------
+
+function createdAsDemoJob(created: CreatedJob): DemoJob {
+  return {
+    id: created.id,
+    key: created.id,
+    title: created.title,
+    description: created.description,
+    additionalInfo: created.additionalInfo,
+    category: CATEGORIES.find((category) => category.id === created.categoryId)!,
+    city: created.city,
+    state: created.state,
+    scheduledDate: created.scheduledDate,
+    startTime: created.startTime,
+    proposedPriceCents: created.proposedPriceCents,
+    negotiable: created.negotiable,
+    ownerName: DEMO_USER.name,
+    ownerCity: DEMO_USER.city,
+    mine: true,
+    draft: created.publishedAt === null,
+    publishedAt: created.publishedAt ?? created.createdAt,
+    expiresAt: created.expiresAt,
+    createdAt: created.createdAt,
+    excerpt: makeExcerpt(created.description),
+  };
+}
+
+/** Todas as oportunidades; as criadas agora vêm primeiro (são as mais recentes). */
+function allJobs(): DemoJob[] {
+  return [...getState().createdJobs.map(createdAsDemoJob).reverse(), ...JOBS];
+}
+
+const jobById = (id: string): DemoJob | undefined => allJobs().find((job) => job.id === id);
+
+/** O que qualquer pessoa pode ver: rascunhos são só da dona. */
+const publicJobById = (id: string): DemoJob | undefined => {
+  const job = jobById(id);
+  return job && !job.draft ? job : undefined;
+};
 
 // --- Situação derivada do estado --------------------------------------------
 
@@ -198,16 +259,16 @@ function ownJobBase(job: DemoJob) {
     startTime: job.startTime,
     proposedPriceCents: job.proposedPriceCents,
     negotiable: job.negotiable,
-    status: "PUBLISHED",
+    status: job.draft ? "DRAFT" : "PUBLISHED",
     isDemo: false,
     expiresAt: job.expiresAt,
-    publishedAt: job.publishedAt,
+    publishedAt: job.draft ? null : job.publishedAt,
     cancelledAt: null,
     createdAt: job.createdAt,
-    updatedAt: job.publishedAt,
+    updatedAt: job.draft ? job.createdAt : job.publishedAt,
     interestCount: INTERESTED_IN_MINE[job.id]?.length ?? 0,
     canEdit: true,
-    canPublish: false,
+    canPublish: job.draft === true,
     canCancel: true,
     canComplete: false,
     hiredWorkerName: null,
@@ -286,7 +347,7 @@ function matchesQuery(job: DemoJob, params: URLSearchParams): boolean {
 function listJobs(params: URLSearchParams): DemoResponse {
   const limit = Math.min(50, Math.max(1, Number(params.get("limit")) || 20));
   const offset = Math.max(0, Number(params.get("cursor")) || 0);
-  const open = JOBS.filter((job) => jobStatus(job) === "PUBLISHED" && matchesQuery(job, params)).sort((a, b) =>
+  const open = allJobs().filter((job) => !job.draft && jobStatus(job) === "PUBLISHED" && matchesQuery(job, params)).sort((a, b) =>
     b.publishedAt.localeCompare(a.publishedAt),
   );
   const page = open.slice(offset, offset + limit);
@@ -328,6 +389,47 @@ function session() {
   };
 }
 
+const validation = (fields: Record<string, string>): DemoResponse => ({
+  status: 400,
+  body: { error: "validation_error", message: JOB_VALIDATION_MESSAGE, fields },
+});
+
+/** POST /me/jobs: as mesmas regras da API real; cria rascunho, ou já publicada com `publish: true`. */
+function createOwnJob(bodyText: string | undefined): DemoResponse {
+  const parsed = createJobSchema.safeParse(parseBody(bodyText));
+  if (!parsed.success) return validation(jobFieldErrors(parsed.error));
+  const { publish, ...input } = parsed.data;
+  const scheduleErrors = validateJobSchedule(input, new Date(), true);
+  if (Object.keys(scheduleErrors).length > 0) return validation(scheduleErrors);
+  if (!CATEGORIES.some((category) => category.id === input.categoryId)) {
+    return validation({ categoryId: "Escolha uma categoria válida." });
+  }
+  const created = createJob(
+    {
+      title: input.title,
+      description: input.description,
+      additionalInfo: input.additionalInfo ?? null,
+      categoryId: input.categoryId,
+      city: input.city,
+      state: input.state,
+      scheduledDate: input.scheduledDate,
+      startTime: input.startTime,
+      proposedPriceCents: input.proposedPriceCents,
+      negotiable: input.negotiable ?? false,
+      expiresAt: input.expiresAt,
+    },
+    publish === true,
+  );
+  return { status: 201, body: { job: ownJob(createdAsDemoJob(created)) } };
+}
+
+/** POST /me/jobs/:id/publish: só rascunhos criados na apresentação podem ser publicados. */
+function publishOwnJob(job: DemoJob): DemoResponse {
+  const published = job.draft ? publishCreatedJob(job.id) : null;
+  if (!published) return fail(409, "invalid_state", "Só é possível publicar um rascunho.");
+  return ok({ job: ownJob(createdAsDemoJob(published)) });
+}
+
 export function handleDemoRequest(method: string, rawPath: string, bodyText?: string): DemoResponse {
   const url = new URL(rawPath, "http://demo.local");
   const path = url.pathname.replace(/\/+$/, "") || "/";
@@ -366,7 +468,7 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
   }
   if (path === "/jobs" && method === "GET") return listJobs(url.searchParams);
   if (segments[0] === "jobs" && segments.length === 2 && method === "GET") {
-    const job = JOB_BY_ID.get(decodeURIComponent(segments[1]!));
+    const job = publicJobById(decodeURIComponent(segments[1]!));
     return job ? ok(detail(job)) : notFound();
   }
   if (segments[0] === "profiles" && segments.length === 2 && method === "GET") {
@@ -379,7 +481,7 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
   if (isPrivate && !loggedIn) return unauthorized();
 
   if (segments[0] === "jobs" && segments.length === 3) {
-    const job = JOB_BY_ID.get(decodeURIComponent(segments[1]!));
+    const job = jobById(decodeURIComponent(segments[1]!));
     if (!job) return notFound();
     if (segments[2] === "viewer" && method === "GET") {
       if (job.mine) return ok({ isOwner: true, interest: null });
@@ -408,12 +510,14 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
 
   // --- Minhas oportunidades ---
   if (segments[0] === "me" && segments[1] === "jobs") {
-    const mine = JOBS.filter((job) => job.mine);
+    const mine = allJobs().filter((job) => job.mine);
     if (segments.length === 2 && method === "GET") return ok({ jobs: mine.map(ownJob) });
+    if (segments.length === 2 && method === "POST") return createOwnJob(bodyText);
     if (segments.length === 2) return notAvailable();
     const job = mine.find((candidate) => candidate.id === decodeURIComponent(segments[2]!));
     if (!job) return notFound();
     if (segments.length === 3 && method === "GET") return ok({ job: ownJob(job) });
+    if (segments[3] === "publish" && method === "POST") return publishOwnJob(job);
     if (segments[3] === "interests" && method === "GET") {
       if (job.id === HIRE_JOB_ID) {
         const { id, status, invite } = hireInterest();

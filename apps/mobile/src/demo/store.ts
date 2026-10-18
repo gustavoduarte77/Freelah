@@ -1,10 +1,31 @@
 import { notifyDataChanged } from "../lib/liveRefresh";
-import { HIRE_ACCEPT_STEP, HIRE_TOTAL_STEPS, INVITE_STEP, TOTAL_STEPS } from "./data";
+import { CATEGORIES, HIRE_ACCEPT_STEP, HIRE_TOTAL_STEPS, INVITE_STEP, TOTAL_STEPS } from "./data";
 
 // Estado local do Modo Demonstração. Fica só neste navegador (localStorage), nunca vai a servidor
 // algum e é totalmente descartável: "Reiniciar" volta ao começo do roteiro.
 
 export type InviteResponse = "accepted" | "declined" | null;
+
+/** Oportunidade criada pela pessoa durante a apresentação. Sem `publishedAt`, é um rascunho. */
+export interface CreatedJob {
+  id: string;
+  title: string;
+  description: string;
+  additionalInfo: string | null;
+  categoryId: string;
+  city: string;
+  state: string;
+  scheduledDate: string;
+  startTime: string;
+  proposedPriceCents: number;
+  negotiable: boolean;
+  expiresAt: string;
+  createdAt: string;
+  publishedAt: string | null;
+}
+
+/** Limite de segurança: cada registro é pequeno, mas o localStorage tem cota. */
+const MAX_CREATED_JOBS = 30;
 
 export interface DemoState {
   loggedIn: boolean;
@@ -27,6 +48,8 @@ export interface DemoState {
   hireInvited: boolean;
   /** Mesmo papel do `epoch`, para este roteiro: a confirmação de contratação volta a aparecer a cada repetição. */
   hireEpoch: number;
+  /** Oportunidades criadas na apresentação (a mais recente por último). Somem no "Reiniciar". */
+  createdJobs: CreatedJob[];
 }
 
 const STORAGE_KEY = "freelah:demo:state:v1";
@@ -41,7 +64,40 @@ const INITIAL: DemoState = {
   hireStep: 1,
   hireInvited: false,
   hireEpoch: 0,
+  createdJobs: [],
 };
+
+const isText = (value: unknown): value is string => typeof value === "string";
+const isDay = (value: unknown): value is string => isText(value) && /^\d{4}-\d{2}-\d{2}$/.test(value);
+const isInstant = (value: unknown): value is string => isText(value) && Number.isFinite(Date.parse(value));
+
+/** Aceita só registros completos; qualquer item corrompido é descartado em vez de quebrar a demonstração. */
+function loadCreatedJobs(value: unknown): CreatedJob[] {
+  if (!Array.isArray(value)) return [];
+  const jobs: CreatedJob[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) continue;
+    const job = item as Partial<CreatedJob>;
+    const valid =
+      isText(job.id) &&
+      job.id !== "" &&
+      isText(job.title) &&
+      isText(job.description) &&
+      (job.additionalInfo === null || isText(job.additionalInfo)) &&
+      CATEGORIES.some((category) => category.id === job.categoryId) &&
+      isText(job.city) &&
+      isText(job.state) &&
+      isDay(job.scheduledDate) &&
+      isText(job.startTime) &&
+      Number.isInteger(job.proposedPriceCents) &&
+      typeof job.negotiable === "boolean" &&
+      isInstant(job.expiresAt) &&
+      isInstant(job.createdAt) &&
+      (job.publishedAt === null || isInstant(job.publishedAt));
+    if (valid) jobs.push(job as CreatedJob);
+  }
+  return jobs.slice(-MAX_CREATED_JOBS);
+}
 
 function load(): DemoState {
   try {
@@ -61,6 +117,7 @@ function load(): DemoState {
       hireStep: Number.isInteger(hireStep) && hireStep >= 1 && hireStep <= HIRE_TOTAL_STEPS ? hireStep : 1,
       hireInvited: value.hireInvited === true,
       hireEpoch: Number.isInteger(value.hireEpoch) ? (value.hireEpoch as number) : 0,
+      createdJobs: loadCreatedJobs(value.createdJobs),
     };
   } catch {
     return { ...INITIAL };
@@ -161,6 +218,30 @@ export function respondToInvite(response: "accepted" | "declined"): boolean {
   // Remonta as telas para que todos os painéis (lista, detalhe, lateral) releiam o novo estado.
   commit({ ...state, response, epoch: response === "accepted" ? state.epoch + 1 : state.epoch }, true);
   return true;
+}
+
+// --- Oportunidades criadas na apresentação ---
+
+/** Cria a oportunidade (rascunho ou já publicada). Fica no estado da demonstração, e só nele. */
+export function createJob(fields: Omit<CreatedJob, "id" | "createdAt" | "publishedAt">, publish: boolean): CreatedJob {
+  const now = new Date().toISOString();
+  const job: CreatedJob = {
+    ...fields,
+    id: `demo-job-novo-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    createdAt: now,
+    publishedAt: publish ? now : null,
+  };
+  commit({ ...state, createdJobs: [...state.createdJobs, job].slice(-MAX_CREATED_JOBS) }, false);
+  return job;
+}
+
+/** Publica um rascunho criado na apresentação. Devolve `null` se ele não existe ou já está publicado. */
+export function publishCreatedJob(id: string): CreatedJob | null {
+  const current = state.createdJobs.find((job) => job.id === id);
+  if (!current || current.publishedAt !== null) return null;
+  const published: CreatedJob = { ...current, publishedAt: new Date().toISOString() };
+  commit({ ...state, createdJobs: state.createdJobs.map((job) => (job.id === id ? published : job)) }, false);
+  return published;
 }
 
 export function addExtraInterest(jobId: string) {
