@@ -20,7 +20,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "demo:web": "npm run demo:web -w @freelah/mobile"
+    "demo:web": "npm run demo:web -w @freelah/mobile",
+    "build:demo": "npm run build:demo -w @freelah/mobile"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
