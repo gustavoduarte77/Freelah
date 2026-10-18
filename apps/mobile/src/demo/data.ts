@@ -399,7 +399,7 @@ export const PROFILES = [
     city: DEMO_USER.city,
     state: "MG",
     avatarUrl: null,
-    headline: null,
+    headline: "Pintura e pequenos reparos",
     bio: "Faço pintura residencial e pequenos serviços de manutenção em Cataguases e região.",
     services: ["Pintura residencial", "Instalação de ventiladores e luminárias", "Pequenos reparos hidráulicos"],
     reviews: [],

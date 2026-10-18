@@ -588,14 +588,14 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
           {
             id: SCRIPT_CONVERSATION_ID,
             job: { id: job.id, title: job.title, status: jobStatus(job) },
-            other: { name: SCRIPT_OTHER_NAME },
+            other: { name: SCRIPT_OTHER_NAME, profileId: SCRIPT_OTHER_PROFILE_ID },
             interestStatus: scriptInterestStatus(),
             lastMessage: last ? { content: last.content, createdAt: last.createdAt, fromMe: last.fromMe } : null,
           },
           {
             id: HIRE_CONVERSATION_ID,
             job: { id: HIRE_JOB_ID, title: hireConversation().job.title, status: hireConversation().job.status },
-            other: { name: HIRE_OTHER_NAME },
+            other: { name: HIRE_OTHER_NAME, profileId: HIRE_OTHER_PROFILE_ID },
             interestStatus: hireInterest().status,
             lastMessage: hireLast ? { content: hireLast.content, createdAt: hireLast.createdAt, fromMe: hireLast.fromMe } : null,
           },

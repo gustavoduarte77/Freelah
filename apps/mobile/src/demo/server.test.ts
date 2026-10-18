@@ -1,4 +1,4 @@
-import { buildCreateJobRequest, emptyJobForm, type JobFormValues } from "@freelah/shared";
+import { buildCreateJobRequest, conversationListItemSchema, emptyJobForm, type JobFormValues } from "@freelah/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleDemoRequest } from "./server";
 import { getState, reset, setLoggedIn } from "./store";
@@ -116,5 +116,15 @@ describe("publicar no Modo Demonstração", () => {
     setLoggedIn(true);
     expect(ownJobs().map((own) => own.id)).toEqual(seeded);
     expect(call("GET", `/jobs/${created.id}`).status).toBe(404);
+  });
+});
+
+describe("conversas e perfis no Modo Demonstração", () => {
+  it("a lista de conversas aponta o perfil público de cada pessoa (base do botão Conversar)", () => {
+    const { conversations } = call("GET", "/me/conversations").body as { conversations: unknown[] };
+    const parsed = conversations.map((item) => conversationListItemSchema.parse(item));
+    const profileIds = parsed.map((item) => item.other.profileId);
+    expect(profileIds).toEqual(["demo-profile-mariana", "demo-profile-roberto"]);
+    for (const id of profileIds) expect(call("GET", `/profiles/${id}`).status).toBe(200);
   });
 });

@@ -68,7 +68,8 @@ export const openConversationResponseSchema = z.object({ conversation: z.object(
 export const conversationListItemSchema = z.object({
   id: z.string(),
   job: conversationJobSchema,
-  other: z.object({ name: z.string() }),
+  /** `profileId` só vem quando há perfil público da outra pessoa (hoje, só no Modo Demonstração). */
+  other: z.object({ name: z.string(), profileId: z.string().optional() }),
   interestStatus: interestStatusSchema,
   lastMessage: z.object({ content: z.string(), createdAt: z.string(), fromMe: z.boolean() }).nullable(),
 });
