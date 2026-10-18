@@ -54,7 +54,8 @@ export const conversationSchema = z.object({
   viewerIsOwner: z.boolean().default(false),
   /** Situação da contratação nesta conversa. */
   interest: z.object({ id: z.string(), status: interestStatusSchema, invite: inviteStateSchema }).optional(),
-  other: z.object({ name: z.string() }),
+  /** `profileId` só vem quando há perfil público da outra pessoa (hoje, só no Modo Demonstração). */
+  other: z.object({ name: z.string(), profileId: z.string().optional() }),
   /** Se ainda dá para enviar mensagens (a conversa continua disponível para leitura). */
   canSend: z.boolean(),
   blockedReason: z.string().nullable(),

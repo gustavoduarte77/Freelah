@@ -4,19 +4,28 @@ import {
   DEMO_EMAIL,
   DEMO_PASSWORD,
   DEMO_USER,
+  HIRE_CONVERSATION_ID,
+  HIRE_INTEREST_CREATED_AT,
+  HIRE_JOB_ID,
+  HIRE_MESSAGES,
+  HIRE_OTHER_CITY,
+  HIRE_OTHER_NAME,
+  HIRE_OTHER_PROFILE_ID,
   INTERESTED_IN_MINE,
   INVITE_STEP,
   JOBS,
   JOB_BY_ID,
   OTHER_INTERESTS,
+  PROFILES,
   SCRIPT_CONVERSATION_ID,
   SCRIPT_INTEREST_CREATED_AT,
   SCRIPT_JOB_ID,
   SCRIPT_MESSAGES,
   SCRIPT_OTHER_NAME,
+  SCRIPT_OTHER_PROFILE_ID,
   type DemoJob,
 } from "./data";
-import { addExtraInterest, getState, respondToInvite, setLoggedIn, withdrawInterest } from "./store";
+import { addExtraInterest, getState, inviteHire, isHireAccepted, respondToInvite, setLoggedIn, withdrawInterest } from "./store";
 
 // "Servidor" do Modo Demonstração: responde, em memória, às mesmas rotas e com os mesmos formatos
 // da API real (os clientes do app validam tudo com os contratos compartilhados). Nenhuma chamada
@@ -54,7 +63,52 @@ function inviteOfScript(): InviteState {
 const scriptInterestStatus = (): InterestStatus => (getState().response === "accepted" ? "ACCEPTED" : "PENDING");
 
 function jobStatus(job: DemoJob): PublicJobStatus {
+  if (job.id === HIRE_JOB_ID) return isHireAccepted(getState()) ? "HIRED" : "PUBLISHED";
   return job.id === SCRIPT_JOB_ID && getState().response === "accepted" ? "HIRED" : "PUBLISHED";
+}
+
+// --- Segundo roteiro: Lucas (dono da oportunidade) contrata Roberto ----------
+
+const hireInterestId = () => `demo-interest-eletrica-${getState().hireEpoch}`;
+
+function hireInterest(): { id: string; status: InterestStatus; invite: InviteState } {
+  const state = getState();
+  if (isHireAccepted(state)) return { id: hireInterestId(), status: "ACCEPTED", invite: "ACCEPTED" };
+  return { id: hireInterestId(), status: "PENDING", invite: state.hireInvited ? "PENDING" : "NONE" };
+}
+
+function visibleHireMessages() {
+  const { hireStep } = getState();
+  return HIRE_MESSAGES.slice(0, Math.max(0, Math.min(hireStep - 1, HIRE_MESSAGES.length)));
+}
+
+function hireConversation() {
+  const job = JOB_BY_ID.get(HIRE_JOB_ID)!;
+  return {
+    id: HIRE_CONVERSATION_ID,
+    job: {
+      id: job.id,
+      title: job.title,
+      status: jobStatus(job),
+      proposedPriceCents: job.proposedPriceCents,
+      scheduledDate: job.scheduledDate,
+      startTime: job.startTime,
+      city: job.city,
+      state: job.state,
+    },
+    viewerIsOwner: true,
+    interest: hireInterest(),
+    other: { name: HIRE_OTHER_NAME, profileId: HIRE_OTHER_PROFILE_ID },
+    canSend: false,
+    blockedReason: "Na demonstração, as mensagens seguem o roteiro. Use os controles da demonstração para avançar a conversa.",
+  };
+}
+
+/** Perfil público com o resumo das avaliações calculado a partir delas. */
+function publicProfile(profile: (typeof PROFILES)[number]) {
+  const count = profile.reviews.length;
+  const average = count > 0 ? profile.reviews.reduce((sum, review) => sum + review.rating, 0) / count : 0;
+  return { ...profile, rating: count > 0 ? { average, count } : null };
 }
 
 interface InterestRow {
@@ -117,6 +171,21 @@ function detail(job: DemoJob) {
 }
 
 function ownJob(job: DemoJob) {
+  if (job.id === HIRE_JOB_ID) {
+    const hired = isHireAccepted(getState());
+    return {
+      ...ownJobBase(job),
+      status: jobStatus(job),
+      interestCount: hired ? 0 : 1,
+      canEdit: !hired,
+      canCancel: !hired,
+      hiredWorkerName: hired ? HIRE_OTHER_NAME : null,
+    };
+  }
+  return ownJobBase(job);
+}
+
+function ownJobBase(job: DemoJob) {
   return {
     id: job.id,
     title: job.title,
@@ -191,7 +260,7 @@ function conversation() {
     },
     viewerIsOwner: false,
     interest: { id: scriptInterestId(), status: scriptInterestStatus(), invite: inviteOfScript() },
-    other: { name: SCRIPT_OTHER_NAME },
+    other: { name: SCRIPT_OTHER_NAME, profileId: SCRIPT_OTHER_PROFILE_ID },
     canSend: false,
     blockedReason: "Na demonstração, as mensagens seguem o roteiro. Use os controles da demonstração para avançar a conversa.",
   };
@@ -300,6 +369,10 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
     const job = JOB_BY_ID.get(decodeURIComponent(segments[1]!));
     return job ? ok(detail(job)) : notFound();
   }
+  if (segments[0] === "profiles" && segments.length === 2 && method === "GET") {
+    const profile = PROFILES.find((candidate) => candidate.id === decodeURIComponent(segments[1]!));
+    return profile ? ok({ profile: publicProfile(profile) }) : notFound();
+  }
 
   // --- Daqui em diante é preciso estar "logado" ---
   const isPrivate = segments[0] === "me" || (segments[0] === "jobs" && segments.length === 3);
@@ -342,6 +415,12 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
     if (!job) return notFound();
     if (segments.length === 3 && method === "GET") return ok({ job: ownJob(job) });
     if (segments[3] === "interests" && method === "GET") {
+      if (job.id === HIRE_JOB_ID) {
+        const { id, status, invite } = hireInterest();
+        return ok({
+          interests: [{ id, status, invite, createdAt: HIRE_INTEREST_CREATED_AT, worker: { name: HIRE_OTHER_NAME, city: HIRE_OTHER_CITY } }],
+        });
+      }
       return ok({
         interests: (INTERESTED_IN_MINE[job.id] ?? []).map((row) => ({
           id: row.id,
@@ -360,6 +439,18 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
     if (segments.length === 2 && method === "GET") return ok({ interests: myInterestRows().map(myInterest) });
     const id = decodeURIComponent(segments[2] ?? "");
     const action = segments[3];
+    // Interesse de Roberto na oportunidade de Lucas: aqui Lucas é o contratante.
+    if (id === hireInterestId()) {
+      if (action === "conversation" && method === "POST") return ok({ conversation: { id: HIRE_CONVERSATION_ID } });
+      if (action === "invite" && method === "POST") {
+        if (getState().hireInvited || isHireAccepted(getState())) return fail(409, "already_invited", "O convite já foi enviado.");
+        if (!inviteHire()) {
+          return fail(409, "demo_readonly", "Na demonstração, avance a conversa (tecla A) até combinarem o serviço e então envie o convite.");
+        }
+        return ok({ interest: hireInterest() });
+      }
+      return notAvailable();
+    }
     const row = myInterestRows().find((candidate) => candidate.id === id);
     if (!row) return notFound();
     const isScript = row.jobId === SCRIPT_JOB_ID;
@@ -387,6 +478,7 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
     if (segments.length === 2 && method === "GET") {
       const job = scriptJob();
       const last = visibleMessages().at(-1);
+      const hireLast = visibleHireMessages().at(-1);
       return ok({
         conversations: [
           {
@@ -396,8 +488,25 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
             interestStatus: scriptInterestStatus(),
             lastMessage: last ? { content: last.content, createdAt: last.createdAt, fromMe: last.fromMe } : null,
           },
+          {
+            id: HIRE_CONVERSATION_ID,
+            job: { id: HIRE_JOB_ID, title: hireConversation().job.title, status: hireConversation().job.status },
+            other: { name: HIRE_OTHER_NAME },
+            interestStatus: hireInterest().status,
+            lastMessage: hireLast ? { content: hireLast.content, createdAt: hireLast.createdAt, fromMe: hireLast.fromMe } : null,
+          },
         ],
       });
+    }
+    if (decodeURIComponent(segments[2] ?? "") === HIRE_CONVERSATION_ID) {
+      if (segments.length === 3 && method === "GET") return ok({ conversation: hireConversation() });
+      if (segments[3] === "messages" && method === "GET") {
+        const all = visibleHireMessages();
+        const after = url.searchParams.get("after");
+        const index = after ? all.findIndex((message) => message.id === after) : -1;
+        return ok({ messages: all.slice(index + 1), cursor: all.at(-1)?.id ?? null });
+      }
+      return notAvailable();
     }
     if (decodeURIComponent(segments[2] ?? "") !== SCRIPT_CONVERSATION_ID) return notFound();
     if (segments.length === 3 && method === "GET") return ok({ conversation: conversation() });

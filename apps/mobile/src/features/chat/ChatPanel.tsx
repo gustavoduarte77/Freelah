@@ -5,7 +5,7 @@ import {
   type Conversation,
   type MyJobsApiError,
 } from "@freelah/shared";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Avatar } from "../../components/Avatar";
@@ -121,7 +121,7 @@ export function ChatPanel({
     }
   }
   useLiveRefresh(() => void reloadAll());
-  useChatPresence();
+  useChatPresence(conversationId);
 
   /** Confere a situação real da conversa (convite, contratação); falha de rede não apaga nada. */
   async function refreshConversation() {
@@ -213,15 +213,11 @@ export function ChatPanel({
     <View style={styles.chat}>
       <View style={styles.header}>
         {headerLeft}
-        <Avatar size={40} />
-        <View style={styles.headerText}>
-          <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
-            {conversation.other.name}
-          </Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {conversation.job.title}
-          </Text>
-        </View>
+        <OtherPerson
+          name={conversation.other.name}
+          profileId={conversation.other.profileId}
+          jobTitle={conversation.job.title}
+        />
         {showJobLink ? (
           <Button
             title="Ver oportunidade"
@@ -322,9 +318,50 @@ export function ChatPanel({
   );
 }
 
+/**
+ * Avatar e nome da outra pessoa. Quando ela tem perfil público, o bloco inteiro abre o perfil (a
+ * conversa continua montada por baixo e é retomada ao voltar); sem perfil, é só texto.
+ */
+function OtherPerson({ name, profileId, jobTitle }: { name: string; profileId?: string; jobTitle: string }) {
+  const router = useRouter();
+  const content = (hovered = false) => (
+    <>
+      <Avatar size={40} />
+      <View style={styles.headerText}>
+        <Text style={[styles.title, hovered ? styles.titleHover : null]} accessibilityRole="header" numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={styles.subtitle} numberOfLines={1}>
+          {jobTitle}
+        </Text>
+      </View>
+    </>
+  );
+  if (!profileId) return <View style={styles.person}>{content()}</View>;
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Ver perfil de ${name}`}
+      testID="chat-open-profile"
+      onPress={() => router.push(`/perfil/${encodeURIComponent(profileId)}` as Href)}
+      style={({ focused }: { pressed: boolean; hovered?: boolean; focused?: boolean }) => [
+        styles.person,
+        styles.personLink,
+        focused ? styles.personFocus : null,
+      ]}
+    >
+      {({ hovered }: { pressed: boolean; hovered?: boolean }) => content(hovered)}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   chat: { flex: 1, gap: 10, minHeight: 0 },
   header: { flexDirection: "row", alignItems: "center", gap: 10 },
+  person: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 },
+  personLink: { cursor: "pointer", borderRadius: radius.md, ...noInnerOutline },
+  personFocus: { outlineWidth: 2, outlineStyle: "solid", outlineColor: colors.brand, outlineOffset: 2 },
+  titleHover: { color: colors.brand, textDecorationLine: "underline" },
   headerText: { flex: 1, minWidth: 0, gap: 1 },
   title: { fontSize: 18, fontWeight: "800", color: colors.text },
   subtitle: { fontSize: 14, color: colors.muted },

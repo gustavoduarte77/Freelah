@@ -294,6 +294,23 @@ const SEEDS: JobSeed[] = [
       "Procuro professor de violão paciente para aulas semanais com minha filha de 10 anos, iniciante. As aulas seriam em casa, aos sábados à tarde, com duração de uma hora.",
     mine: true,
   },
+  {
+    // Segundo roteiro: aqui a conta de demonstração é quem contrata (veja HIRE_* abaixo).
+    key: "eletrica",
+    title: "Troca de chuveiro e tomadas da cozinha",
+    cat: "servicos-de-manutencao",
+    owner: "Lucas Oliveira",
+    ownerCity: "Cataguases",
+    city: "Cataguases",
+    inDays: 5,
+    time: "08:00",
+    cents: 18000,
+    publishedDaysAgo: 1,
+    description:
+      "Preciso trocar o chuveiro elétrico do banheiro (220 V) e substituir duas tomadas antigas da cozinha. O chuveiro novo e as tomadas já foram comprados; falta um eletricista para a instalação.",
+    extra: "Casa térrea. O quadro de energia fica na área de serviço.",
+    mine: true,
+  },
 ];
 
 export const JOBS: DemoJob[] = SEEDS.map((seed) => ({
@@ -327,6 +344,80 @@ export const JOB_BY_ID = new Map(JOBS.map((job) => [job.id, job]));
 export const SCRIPT_JOB_ID = "demo-job-pintura";
 export const SCRIPT_CONVERSATION_ID = "demo-conversation-pintura";
 export const SCRIPT_OTHER_NAME = "Mariana Costa";
+export const SCRIPT_OTHER_PROFILE_ID = "demo-profile-mariana";
+
+// ---------------------------------------------------------------------------
+// Segundo roteiro (Lucas contrata Roberto, eletricista, para a troca do chuveiro)
+// ---------------------------------------------------------------------------
+
+export const HIRE_JOB_ID = "demo-job-eletrica";
+export const HIRE_CONVERSATION_ID = "demo-conversation-eletrica";
+export const HIRE_OTHER_NAME = "Roberto Andrade";
+export const HIRE_OTHER_CITY = "Cataguases";
+export const HIRE_OTHER_PROFILE_ID = "demo-profile-roberto";
+
+/** Etapas: 1 = interesse de Roberto, conversa vazia; 2 a 5 = uma mensagem por etapa; 6 = Roberto aceita o convite. */
+export const HIRE_TOTAL_STEPS = 6;
+export const HIRE_ACCEPT_STEP = 6;
+
+export const HIRE_INTEREST_CREATED_AT = daysAgo(1);
+
+/** `fromMe` é do ponto de vista de Lucas (o contratante, nesta conversa). */
+export const HIRE_MESSAGES: Array<{ id: string; fromMe: boolean; content: string; createdAt: string }> = [
+  { id: "demo-hire-msg-1", fromMe: false, content: "Olá, Lucas! Sou eletricista aqui em Cataguases e vi sua oportunidade da troca do chuveiro. Posso ajudar.", createdAt: todayAt(10, 12) },
+  { id: "demo-hire-msg-2", fromMe: true, content: "Oi, Roberto! O chuveiro é de 220 V e são duas tomadas na cozinha. O material já está comprado.", createdAt: todayAt(10, 15) },
+  { id: "demo-hire-msg-3", fromMe: false, content: "Perfeito. Levo minhas ferramentas e confiro o disjuntor antes da troca. Consigo no dia e horário do anúncio.", createdAt: todayAt(10, 17) },
+  { id: "demo-hire-msg-4", fromMe: true, content: "Combinado! Vou te enviar o convite pelo Freelah.", createdAt: todayAt(10, 18) },
+];
+
+// ---------------------------------------------------------------------------
+// Perfis públicos. As avaliações existem só no perfil do profissional e são fictícias (isDemo).
+// ---------------------------------------------------------------------------
+
+export const PROFILES = [
+  {
+    id: SCRIPT_OTHER_PROFILE_ID,
+    name: SCRIPT_OTHER_NAME,
+    city: "Cataguases",
+    state: "MG",
+    avatarUrl: null,
+    headline: null,
+    bio: "Moro em Cataguases e uso o Freelah para encontrar profissionais da região para pequenos serviços em casa.",
+    // Contratante: não oferece serviços nem tem avaliações profissionais, então essas seções não aparecem.
+    services: [],
+    reviews: [],
+    isDemo: true,
+  },
+  {
+    // A própria conta de demonstração (sem telefone nem e-mail). Ainda não há link para ela no app.
+    id: "demo-profile-lucas",
+    name: DEMO_USER.name,
+    city: DEMO_USER.city,
+    state: "MG",
+    avatarUrl: null,
+    headline: null,
+    bio: "Faço pintura residencial e pequenos serviços de manutenção em Cataguases e região.",
+    services: ["Pintura residencial", "Instalação de ventiladores e luminárias", "Pequenos reparos hidráulicos"],
+    reviews: [],
+    isDemo: true,
+  },
+  {
+    id: HIRE_OTHER_PROFILE_ID,
+    name: HIRE_OTHER_NAME,
+    city: HIRE_OTHER_CITY,
+    state: "MG",
+    avatarUrl: null,
+    headline: "Eletricista residencial",
+    bio: "Faço instalações e reparos elétricos em casas e pequenos comércios de Cataguases e região. Explico o serviço antes de começar e deixo tudo limpo ao terminar.",
+    services: ["Instalação de chuveiros", "Troca de tomadas e interruptores", "Instalação de luminárias", "Revisão de quadro de energia"],
+    reviews: [
+      { author: "Helena M.", rating: 5, comment: "Trocou o chuveiro rapidinho e ainda explicou como evitar o disjuntor desarmando.", serviceTitle: "Instalação de chuveiro", createdAt: daysAgo(12) },
+      { author: "Sérgio P.", rating: 5, comment: "Pontual e caprichoso. Deixou a cozinha limpa depois de trocar as tomadas.", serviceTitle: "Troca de tomadas", createdAt: daysAgo(26) },
+      { author: "Ana Clara R.", rating: 4, comment: "Ótimo serviço. Só precisou remarcar o horário uma vez, mas avisou com antecedência.", serviceTitle: "Instalação de luminárias", createdAt: daysAgo(41) },
+    ],
+    isDemo: true,
+  },
+];
 
 /** Etapas: 1 = interesse registrado; 2 a 6 = uma mensagem por etapa; 7 = convite formal. */
 export const TOTAL_STEPS = 7;

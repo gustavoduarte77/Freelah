@@ -1,12 +1,24 @@
 import { Fragment, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../components/ui";
-import { isChatOnScreen, subscribeChatPresence } from "../lib/liveRefresh";
+import { activeChatId, isChatOnScreen, subscribeChatPresence } from "../lib/liveRefresh";
 import { radius, shadow } from "../theme";
 import { API_URL } from "../lib/api";
-import { TOTAL_STEPS } from "./data";
+import { HIRE_CONVERSATION_ID, HIRE_TOTAL_STEPS, TOTAL_STEPS } from "./data";
 import { handleDemoRequest } from "./server";
-import { advance, back, getState, getVersion, reset, subscribe } from "./store";
+import {
+  advance,
+  advanceHire,
+  back,
+  backHire,
+  getState,
+  getVersion,
+  isHireAccepted,
+  isHireWaitingInvite,
+  reset,
+  subscribe,
+  type DemoState,
+} from "./store";
 
 // Carregado SOMENTE quando EXPO_PUBLIC_DEMO_MODE=1 (veja gate.ts). No aplicativo normal este arquivo,
 // os dados fictícios e a conta de demonstração nem entram no pacote.
@@ -55,8 +67,41 @@ function isTyping(target: EventTarget | null): boolean {
   return role === "textbox" || role === "combobox" || role === "searchbox";
 }
 
+/** Situação dos controles para o roteiro da conversa aberta. */
+function scenarioFor(chatId: string | null, state: DemoState) {
+  if (chatId === HIRE_CONVERSATION_ID) {
+    return {
+      onAdvance: advanceHire,
+      onBack: backHire,
+      step: state.hireStep,
+      total: HIRE_TOTAL_STEPS,
+      atEnd: state.hireStep >= HIRE_TOTAL_STEPS || isHireWaitingInvite(state),
+      atStart: state.hireStep <= 1 && !state.hireInvited,
+      note: isHireAccepted(state)
+        ? " · convite aceito"
+        : state.hireInvited
+          ? " · convite enviado"
+          : isHireWaitingInvite(state)
+            ? " · envie o convite para continuar"
+            : "",
+    };
+  }
+  // Roteiro da pintura (o original).
+  return {
+    onAdvance: advance,
+    onBack: back,
+    step: state.step,
+    total: TOTAL_STEPS,
+    atEnd: state.step >= TOTAL_STEPS || state.response !== null,
+    atStart: state.step <= 1 && state.response === null,
+    note: state.response === "accepted" ? " · convite aceito" : state.response === "declined" ? " · convite recusado" : "",
+  };
+}
+
 function DemoControls() {
   const state = useSyncExternalStore(subscribe, getState, getState);
+  const chatId = useSyncExternalStore(subscribeChatPresence, activeChatId, activeChatId);
+  const { onAdvance, onBack, step, total, atEnd, atStart, note } = scenarioFor(chatId, state);
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -66,19 +111,15 @@ function DemoControls() {
       const key = event.key.toLowerCase();
       if (key === "a") {
         event.preventDefault();
-        advance();
+        onAdvance();
       } else if (key === "b") {
         event.preventDefault();
-        back();
+        onBack();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  const atEnd = state.step >= TOTAL_STEPS || state.response !== null;
-  const atStart = state.step <= 1 && state.response === null;
-  const note = state.response === "accepted" ? " · convite aceito" : state.response === "declined" ? " · convite recusado" : "";
+  }, [onAdvance, onBack]);
 
   return (
     <View style={styles.wrap} pointerEvents="box-none">
@@ -88,11 +129,11 @@ function DemoControls() {
         </View>
         <Text style={styles.title}>Controles da demonstração</Text>
         <Text style={styles.step} accessibilityLiveRegion="polite" testID="demo-step">
-          Etapa {state.step} de {TOTAL_STEPS}
+          Etapa {step} de {total}
           {note}
         </Text>
-        <ControlButton label="Voltar" hint="B" onPress={back} disabled={atStart} />
-        <ControlButton label="Avançar" hint="A" onPress={advance} disabled={atEnd} primary />
+        <ControlButton label="Voltar" hint="B" onPress={onBack} disabled={atStart} />
+        <ControlButton label="Avançar" hint="A" onPress={onAdvance} disabled={atEnd} primary />
         <ControlButton label="Reiniciar" onPress={reset} />
       </View>
     </View>
