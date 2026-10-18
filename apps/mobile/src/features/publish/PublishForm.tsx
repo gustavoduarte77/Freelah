@@ -43,6 +43,7 @@ export function PublishForm({
   submitLabel,
   onSubmit,
   submitting = false,
+  photos,
 }: {
   form: JobFormStore;
   categories: Category[];
@@ -52,6 +53,8 @@ export function PublishForm({
   onSubmit: () => JobFormErrors | null;
   /** Há um envio em andamento: o botão fica ocupado e desabilitado. */
   submitting?: boolean;
+  /** Seção opcional de fotos (só a publicação a usa), logo depois das observações. */
+  photos?: ReactNode;
 }) {
   const { values, errors } = useJobForm(form);
   // Enter leva ao próximo campo, na ordem do formulário. Nunca envia: o envio é só pelo botão.
@@ -192,6 +195,8 @@ export function PublishForm({
             onKeyPress={(event) => advanceOnCtrlEnter(event, () => cityRef.current?.focus())}
           />
         </View>
+
+        {photos}
       </Section>
       </View>
 

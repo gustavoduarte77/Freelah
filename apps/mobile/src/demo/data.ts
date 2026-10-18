@@ -66,6 +66,8 @@ export interface DemoJob {
   mine: boolean;
   /** Criada durante a apresentação e ainda não publicada: só a dona a vê. */
   draft?: boolean;
+  /** Quantas fotos tem: nos anúncios fictícios é só um número (não há imagens); nos criados, as fotos reais. */
+  photoCount?: number;
   publishedAt: string;
   expiresAt: string;
   createdAt: string;
@@ -87,11 +89,14 @@ interface JobSeed {
   description: string;
   extra?: string;
   mine?: boolean;
+  /** Quantas fotos o anúncio fictício "tem" (só o ícone aparece; não há imagens). */
+  photos?: number;
 }
 
 const SEEDS: JobSeed[] = [
   {
     key: "pintura",
+    photos: 3,
     title: "Pintura de sala residencial",
     cat: "construcao-civil",
     owner: "Mariana Costa",
@@ -107,6 +112,7 @@ const SEEDS: JobSeed[] = [
   },
   {
     key: "ventilador",
+    photos: 2,
     title: "Instalação de ventilador de teto",
     cat: "servicos-de-manutencao",
     owner: "Carlos Almeida",
@@ -122,6 +128,7 @@ const SEEDS: JobSeed[] = [
   },
   {
     key: "torneira",
+    photos: 1,
     title: "Reparo de torneira e vazamento na cozinha",
     cat: "servicos-de-manutencao",
     owner: "Fernanda Lima",
@@ -167,6 +174,7 @@ const SEEDS: JobSeed[] = [
   },
   {
     key: "estante",
+    photos: 4,
     title: "Montagem de móveis de escritório",
     cat: "servicos-comerciais",
     owner: "Alfa Contabilidade",
@@ -181,6 +189,7 @@ const SEEDS: JobSeed[] = [
   },
   {
     key: "banheiro",
+    photos: 3,
     title: "Troca de revestimento de banheiro",
     cat: "construcao-civil",
     owner: "Paulo Henrique",
@@ -197,6 +206,7 @@ const SEEDS: JobSeed[] = [
   },
   {
     key: "jardim",
+    photos: 2,
     title: "Jardinagem e poda em quintal",
     cat: "servicos-domesticos",
     owner: "Helena Martins",
@@ -225,6 +235,7 @@ const SEEDS: JobSeed[] = [
   },
   {
     key: "estoque",
+    photos: 1,
     title: "Organização de estoque de padaria",
     cat: "servicos-comerciais",
     owner: "Padaria Pão Quente",
@@ -239,6 +250,7 @@ const SEEDS: JobSeed[] = [
   },
   {
     key: "piso",
+    photos: 3,
     title: "Assentamento de piso cerâmico na varanda",
     cat: "construcao-civil",
     owner: "José Roberto Silva",
@@ -269,6 +281,7 @@ const SEEDS: JobSeed[] = [
   // Oportunidades publicadas pela conta de demonstração (ela também contrata).
   {
     key: "guarda-roupa",
+    photos: 4,
     title: "Montagem de guarda-roupa de 6 portas",
     cat: "servicos-domesticos",
     owner: "Lucas Oliveira",
@@ -285,6 +298,7 @@ const SEEDS: JobSeed[] = [
   },
   {
     key: "violao",
+    photos: 2,
     title: "Aulas de violão para criança de 10 anos",
     cat: "aulas-particulares",
     owner: "Lucas Oliveira",
@@ -301,6 +315,7 @@ const SEEDS: JobSeed[] = [
   {
     // Segundo roteiro: aqui a conta de demonstração é quem contrata (veja HIRE_* abaixo).
     key: "eletrica",
+    photos: 2,
     title: "Troca de chuveiro e tomadas da cozinha",
     cat: "servicos-de-manutencao",
     owner: "Lucas Oliveira",
@@ -333,6 +348,7 @@ export const JOBS: DemoJob[] = SEEDS.map((seed) => ({
   ownerName: seed.owner,
   ownerCity: seed.ownerCity,
   mine: seed.mine ?? false,
+  photoCount: seed.photos ?? 0,
   publishedAt: daysAgo(seed.publishedDaysAgo),
   expiresAt: dayOffset(seed.inDays - 1).toISOString(),
   createdAt: daysAgo(seed.publishedDaysAgo + 1),

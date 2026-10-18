@@ -8,5 +8,8 @@ export default {
       "expo-router": fileURLToPath(new URL("./src/demo/test/expo-router.ts", import.meta.url)),
     },
   },
-  test: { include: ["src/**/*.test.ts"] },
+  test: {
+    include: ["src/**/*.test.ts"],
+    setupFiles: [fileURLToPath(new URL("./src/demo/test/local-storage.ts", import.meta.url))],
+  },
 };

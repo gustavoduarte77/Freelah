@@ -1,7 +1,9 @@
 import { buildCreateJobRequest, conversationListItemSchema, emptyJobForm, type JobFormValues } from "@freelah/shared";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { publishPhotos } from "../features/publish/photos";
 import { handleDemoRequest } from "./server";
 import { getState, reset, setLoggedIn } from "./store";
+import { testStorage } from "./test/local-storage";
 
 const call = (method: string, path: string, body?: unknown) =>
   handleDemoRequest(method, path, body === undefined ? undefined : JSON.stringify(body));
@@ -126,5 +128,112 @@ describe("conversas e perfis no Modo Demonstração", () => {
     const profileIds = parsed.map((item) => item.other.profileId);
     expect(profileIds).toEqual(["demo-profile-mariana", "demo-profile-roberto"]);
     for (const id of profileIds) expect(call("GET", `/profiles/${id}`).status).toBe(200);
+  });
+});
+
+// --- Fotos das oportunidades ---------------------------------------------------
+
+const jpeg = (seed: string, size = 400) => `data:image/jpeg;base64,${seed.repeat(Math.ceil(size / seed.length)).slice(0, size)}`;
+type Detail = { images?: string[]; photoCount?: number };
+const imageKeys = () => [...Array(testStorage.length).keys()].map((i) => testStorage.key(i)).filter((key) => key?.includes(":images:"));
+const detailOf = (id: string) => call("GET", `/jobs/${id}`).body as Detail;
+const createWithPhotos = (images: string[], extra: Record<string, unknown> = { publish: true }) => {
+  publishPhotos.replace(images);
+  return call("POST", "/me/jobs", { ...buildRequest(), ...extra });
+};
+
+describe("fotos das oportunidades", () => {
+  beforeEach(() => {
+    publishPhotos.clear();
+    testStorage.limitChars = null;
+  });
+
+  it("guarda as fotos na ordem (capa primeiro) e mostra no detalhe e na lista", () => {
+    const photos = [jpeg("AAAA"), jpeg("BBBB"), jpeg("CCCC")];
+    const created = (createWithPhotos(photos).body as { job: Own }).job;
+    expect(detailOf(created.id).images).toEqual(photos);
+    expect(detailOf(created.id).photoCount).toBe(3);
+    const listed = (call("GET", "/jobs?limit=50").body as { jobs: Array<{ id: string; photoCount?: number }> }).jobs;
+    expect(listed.find((job) => job.id === created.id)?.photoCount).toBe(3);
+  });
+
+  it("a capa escolhida vai para o começo e é a que o detalhe mostra primeiro", () => {
+    const [a, b, c] = [jpeg("AAAA"), jpeg("BBBB"), jpeg("CCCC")] as [string, string, string];
+    publishPhotos.replace([a, b, c]);
+    publishPhotos.setCover(2);
+    expect(publishPhotos.getState().images).toEqual([c, a, b]);
+    const created = (call("POST", "/me/jobs", { ...buildRequest(), publish: true }).body as { job: Own }).job;
+    expect(detailOf(created.id).images?.[0]).toBe(c);
+  });
+
+  it("sem fotos a oportunidade continua válida, sem imagens", () => {
+    const created = (createWithPhotos([]).body as { job: Own }).job;
+    expect(detailOf(created.id).images).toEqual([]);
+    expect(detailOf(created.id).photoCount).toBe(0);
+  });
+
+  it("rascunho com fotos mantém as fotos ao ser publicado", () => {
+    const photos = [jpeg("AAAA"), jpeg("BBBB")];
+    const draft = (createWithPhotos(photos, {}).body as { job: Own }).job;
+    expect(draft.status).toBe("DRAFT");
+    call("POST", `/me/jobs/${draft.id}/publish`);
+    expect(detailOf(draft.id).images).toEqual(photos);
+  });
+
+  it("as oportunidades fictícias indicam fotos pelo número, sem imagens", () => {
+    const pintura = detailOf("demo-job-pintura");
+    expect(pintura.photoCount).toBeGreaterThan(0);
+    expect(pintura.images).toEqual([]);
+    expect(detailOf("demo-job-limpeza-obra").photoCount).toBe(0);
+  });
+
+  it("as fotos sobrevivem a recarregar a página (estado e fotos relidos do armazenamento)", async () => {
+    const photos = [jpeg("AAAA"), jpeg("BBBB")];
+    const created = (createWithPhotos(photos).body as { job: Own }).job;
+    vi.resetModules();
+    const reloaded = await import("./server");
+    const call2 = (path: string) => reloaded.handleDemoRequest("GET", path).body as Detail & { jobs?: Own[] };
+    expect(call2(`/jobs/${created.id}`).images).toEqual(photos);
+    expect(call2("/me/jobs").jobs?.map((job) => job.id)).toContain(created.id);
+  });
+
+  it("sem espaço no armazenamento não cria nada e explica o motivo", () => {
+    testStorage.limitChars = 600;
+    const before = getState().createdJobs.length;
+    const response = createWithPhotos([jpeg("AAAA", 5000)]);
+    expect(response.status).toBe(409);
+    const body = response.body as { error: string; message: string };
+    expect(body.error).toBe("images_not_saved");
+    expect(body.message).toMatch(/espaço/);
+    expect(getState().createdJobs.length).toBe(before);
+    expect(imageKeys()).toEqual([]);
+  });
+
+  it("respeita o orçamento total de fotos: a que não cabe é recusada, as anteriores seguem salvas", () => {
+    const big = Array.from({ length: 5 }, (_, i) => jpeg(`${"ABCDE"[i]}AAA`, 190_000));
+    const first = (createWithPhotos(big).body as { job: Own }).job;
+    const second = (createWithPhotos(big).body as { job: Own }).job;
+    expect(detailOf(first.id).images).toHaveLength(5);
+    expect(detailOf(second.id).images).toHaveLength(5);
+    const third = createWithPhotos(big);
+    expect(third.status).toBe(409);
+    expect(detailOf(first.id).images).toHaveLength(5);
+  });
+
+  it("recusa fotos inválidas (formato ou quantidade) sem criar a oportunidade", () => {
+    const before = getState().createdJobs.length;
+    const wrongFormat = createWithPhotos(["https://exemplo.com/a.jpg"]);
+    expect(wrongFormat.status).toBe(400);
+    expect((wrongFormat.body as { fields: Record<string, string> }).fields).toHaveProperty("images");
+    const tooMany = createWithPhotos(Array.from({ length: 6 }, () => jpeg("AAAA")));
+    expect(tooMany.status).toBe(400);
+    expect(getState().createdJobs.length).toBe(before);
+  });
+
+  it("Reiniciar apaga as fotos guardadas", () => {
+    createWithPhotos([jpeg("AAAA")]);
+    expect(imageKeys()).toHaveLength(1);
+    reset();
+    expect(imageKeys()).toEqual([]);
   });
 });

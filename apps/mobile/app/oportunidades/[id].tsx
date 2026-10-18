@@ -106,7 +106,7 @@ function Detail({ job }: { job: JobDetail }) {
   return (
     <View style={[styles.layout, isWide ? styles.layoutWide : null]}>
       <View style={[styles.card, styles.mainCol]}>
-        <JobMedia categorySlug={job.category.slug} />
+        <JobMedia categorySlug={job.category.slug} images={job.images ?? []} photoCount={job.photoCount ?? 0} />
         <View style={styles.badges}>
           <Text style={styles.category}>{job.category.name}</Text>
           <StatusBadge status={job.status} />

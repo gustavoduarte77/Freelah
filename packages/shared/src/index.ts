@@ -14,6 +14,7 @@ export * from "./interests";
 export * from "./chat";
 export * from "./my-jobs-api";
 export * from "./job-form";
+export * from "./job-images";
 export * from "./publish-submission";
 export * from "./profiles";
 export * from "./professional-search";

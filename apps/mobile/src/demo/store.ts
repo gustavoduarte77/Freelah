@@ -1,5 +1,6 @@
 import { notifyDataChanged } from "../lib/liveRefresh";
 import { CATEGORIES, HIRE_ACCEPT_STEP, HIRE_TOTAL_STEPS, INVITE_STEP, TOTAL_STEPS } from "./data";
+import { clearAllJobImages, pruneJobImages, removeJobImages, saveJobImages } from "./images";
 
 // Estado local do Modo Demonstração. Fica só neste navegador (localStorage), nunca vai a servidor
 // algum e é totalmente descartável: "Reiniciar" volta ao começo do roteiro.
@@ -125,6 +126,8 @@ function load(): DemoState {
 }
 
 let state: DemoState = load();
+// Fotos de oportunidades que o estado carregado não conhece (por exemplo, depois de um estado corrompido).
+pruneJobImages(state.createdJobs.map((job) => job.id));
 /** Muda só quando nenhuma tela aberta sabe se atualizar sozinha: aí as telas são remontadas e releem o estado. */
 let version = 0;
 const listeners = new Set<() => void>();
@@ -170,6 +173,7 @@ export function back() {
 
 /** Reinício completo: os dois roteiros, convites, contratações e interesses feitos durante a apresentação. */
 export function reset() {
+  clearAllJobImages();
   commit({ ...INITIAL, loggedIn: state.loggedIn, epoch: state.epoch + 1, hireEpoch: state.hireEpoch + 1 }, true);
 }
 
@@ -222,8 +226,17 @@ export function respondToInvite(response: "accepted" | "declined"): boolean {
 
 // --- Oportunidades criadas na apresentação ---
 
-/** Cria a oportunidade (rascunho ou já publicada). Fica no estado da demonstração, e só nele. */
-export function createJob(fields: Omit<CreatedJob, "id" | "createdAt" | "publishedAt">, publish: boolean): CreatedJob {
+export type CreateJobResult = { ok: true; job: CreatedJob } | { ok: false; message: string };
+
+/**
+ * Cria a oportunidade (rascunho ou já publicada). Fica no estado da demonstração, e só nele.
+ * Com fotos, elas são gravadas primeiro: se não couberem, nada é criado e o motivo volta em `message`.
+ */
+export function createJob(
+  fields: Omit<CreatedJob, "id" | "createdAt" | "publishedAt">,
+  publish: boolean,
+  images: readonly string[] = [],
+): CreateJobResult {
   const now = new Date().toISOString();
   const job: CreatedJob = {
     ...fields,
@@ -231,8 +244,14 @@ export function createJob(fields: Omit<CreatedJob, "id" | "createdAt" | "publish
     createdAt: now,
     publishedAt: publish ? now : null,
   };
-  commit({ ...state, createdJobs: [...state.createdJobs, job].slice(-MAX_CREATED_JOBS) }, false);
-  return job;
+  if (images.length > 0) {
+    const saved = saveJobImages(job.id, images);
+    if (!saved.ok) return { ok: false, message: saved.message };
+  }
+  const all = [...state.createdJobs, job];
+  for (const dropped of all.slice(0, Math.max(0, all.length - MAX_CREATED_JOBS))) removeJobImages(dropped.id);
+  commit({ ...state, createdJobs: all.slice(-MAX_CREATED_JOBS) }, false);
+  return { ok: true, job };
 }
 
 /** Publica um rascunho criado na apresentação. Devolve `null` se ele não existe ou já está publicado. */

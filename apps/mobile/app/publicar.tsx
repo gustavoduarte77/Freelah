@@ -11,7 +11,11 @@ import { useCategories } from "../src/features/jobs/hooks";
 import { submission } from "../src/features/publish/api";
 import { PublishForm } from "../src/features/publish/PublishForm";
 import { PublishReview } from "../src/features/publish/PublishReview";
+import { PhotoPicker } from "../src/features/publish/PhotoPicker";
+import { canPickPhotos } from "../src/features/publish/photoFiles";
+import { publishPhotos } from "../src/features/publish/photos";
 import { publishDraft, usePublishDraft, useSubmissionState } from "../src/features/publish/store";
+import { DEMO_MODE } from "../src/demo/gate";
 
 /** Publicar oportunidade (PRD 15): exige login; o formulário e o envio vivem em memória. */
 export default function PublishScreen() {
@@ -120,6 +124,7 @@ function PublishFlow({
   useEffect(() => {
     if (publishDraft.getState().ownerId !== userId) {
       publishDraft.claim(userCity, userId);
+      publishPhotos.clear();
       submission.reset();
     }
   }, [userId, userCity]);
@@ -157,6 +162,8 @@ function PublishFlow({
         categories={categories.state.data}
         scrollToY={scrollToY}
         submitLabel="Revisar"
+        // Fotos: só no Modo Demonstração Web (a API real ainda não as guarda).
+        photos={DEMO_MODE && canPickPhotos() ? <PhotoPicker /> : undefined}
         onSubmit={() => {
           const result = buildCreateJobRequest(publishDraft.getState().values, new Date());
           if (!result.ok) return result.errors;

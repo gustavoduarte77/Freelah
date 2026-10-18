@@ -184,6 +184,8 @@ export const jobSummarySchema = z.object({
   /** Dado de demonstração (PRD 38.2): a interface mostra o selo "Demonstração". */
   isDemo: z.boolean(),
   publishedAt: z.string(),
+  /** Quantas fotos a oportunidade tem. Opcional: a API real ainda não guarda fotos (ausente = 0). */
+  photoCount: z.number().int().nonnegative().optional(),
 });
 export type JobSummary = z.infer<typeof jobSummarySchema>;
 
@@ -202,6 +204,8 @@ export const jobDetailSchema = jobSummarySchema.extend({
   owner: z.object({ name: z.string(), city: z.string(), isDemo: z.boolean() }),
   acceptingInterests: z.boolean(),
   statusMessage: z.string().nullable(),
+  /** Fotos prontas para exibir (a capa primeiro). Opcional: só o Modo Demonstração as envia, por enquanto. */
+  images: z.array(z.string()).optional(),
 });
 export type JobDetail = z.infer<typeof jobDetailSchema>;
 

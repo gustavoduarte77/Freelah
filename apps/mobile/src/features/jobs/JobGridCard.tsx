@@ -6,6 +6,7 @@ import { InteractiveCard } from "../../components/InteractiveCard";
 import { colors, gradient, radius } from "../../theme";
 import { DemoBadge, StatusBadge } from "./components";
 import { JobArt } from "./JobArt";
+import { PhotoBadge } from "./PhotoBadge";
 
 const CARD_HEIGHT = 380;
 const INFO_HEIGHT = 210;
@@ -32,6 +33,7 @@ export function JobGridCard({ job }: { job: JobSummary }) {
         </View>
         {job.status !== "PUBLISHED" ? <StatusBadge status={job.status} /> : null}
         {job.isDemo ? <DemoBadge /> : null}
+        <PhotoBadge count={job.photoCount ?? 0} />
       </View>
       <View
         style={[

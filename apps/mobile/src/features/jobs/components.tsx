@@ -14,6 +14,7 @@ import { InteractiveCard } from "../../components/InteractiveCard";
 import { Button, colors } from "../../components/ui";
 import { radius } from "../../theme";
 import { JobArt } from "./JobArt";
+import { PhotoBadge } from "./PhotoBadge";
 import { useRecovery } from "../recovery/RecoveryProvider";
 
 export const STATUS_LABEL: Record<PublicJobStatus, string> = {
@@ -60,6 +61,7 @@ export function JobCard({ job }: { job: JobSummary }) {
           <Text style={styles.category}>{job.category.name}</Text>
           {job.status !== "PUBLISHED" ? <StatusBadge status={job.status} /> : null}
           {job.isDemo ? <DemoBadge /> : null}
+          <PhotoBadge count={job.photoCount ?? 0} onLight />
         </View>
         <Text style={styles.title}>{job.title}</Text>
         <Text style={styles.excerpt} numberOfLines={2}>

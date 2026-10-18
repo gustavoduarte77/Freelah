@@ -11,10 +11,13 @@ import {
 } from "@freelah/shared";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 import { Button, colors } from "../../components/ui";
+import { DEMO_MODE } from "../../demo/gate";
 import { exploreJobsController, homeJobsController } from "../jobs/registry";
 import { submission } from "./api";
+import { canPickPhotos } from "./photoFiles";
+import { publishPhotos, usePublishPhotos } from "./photos";
 import { publishDraft, usePublishDraft, useSubmissionState } from "./store";
 
 /** Revisão, envio (rascunho ou publicação) e resultado. Nada é declarado salvo sem confirmação da API. */
@@ -30,6 +33,7 @@ export function PublishReview({
   const router = useRouter();
   const { values } = usePublishDraft();
   const state = useSubmissionState();
+  const photos = usePublishPhotos();
   const [confirmingRetry, setConfirmingRetry] = useState(false);
 
   const built = buildCreateJobRequest(values, new Date());
@@ -68,6 +72,7 @@ export function PublishReview({
   function startOver() {
     setConfirmingRetry(false);
     submission.reset();
+    publishPhotos.clear();
     publishDraft.reset(userCity, userId);
   }
 
@@ -129,6 +134,7 @@ export function PublishReview({
       <Row label="Publicada até" value={describeDeadline(deadline)} testID="review-deadline" />
       <Row label="Descrição" value={request.description} />
       {request.additionalInfo ? <Row label="Observações" value={request.additionalInfo} /> : null}
+      {DEMO_MODE && canPickPhotos() ? <PhotosRow images={photos.images} /> : null}
 
       {state.status === "failed" && state.error.kind !== "validation" ? (
         <View style={styles.errorBox} accessibilityRole="alert" accessibilityLiveRegion="assertive" testID="submit-error">
@@ -184,6 +190,24 @@ export function PublishReview({
   );
 }
 
+/** Fotos na revisão: miniaturas (a capa primeiro) ou o aviso de que não há nenhuma. */
+function PhotosRow({ images }: { images: string[] }) {
+  if (images.length === 0) return <Row label="Fotos" value="Nenhuma foto adicionada. O anúncio aparece só com o ícone da categoria." />;
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>Fotos</Text>
+      <View style={styles.photoRow}>
+        {images.map((uri, index) => (
+          <Image key={uri.slice(-40) + index} source={{ uri }} style={styles.photo} resizeMode="cover" accessibilityLabel={index === 0 ? "Capa" : `Foto ${index + 1}`} />
+        ))}
+      </View>
+      <Text style={styles.rowValue}>
+        {images.length} {images.length === 1 ? "foto" : "fotos"}; a primeira é a capa.
+      </Text>
+    </View>
+  );
+}
+
 function Row({ label, value, testID }: { label: string; value: string; testID?: string }) {
   return (
     <View style={styles.row}>
@@ -201,6 +225,8 @@ const styles = StyleSheet.create({
   row: { gap: 2 },
   rowLabel: { fontSize: 12, fontWeight: "700", color: colors.muted, textTransform: "uppercase" },
   rowValue: { fontSize: 16, color: colors.text },
+  photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginVertical: 4 },
+  photo: { width: 88, height: 66, borderRadius: 8, backgroundColor: colors.border },
   actions: { gap: 4 },
   body: { fontSize: 15, color: colors.text },
   resultTitle: { fontSize: 24, fontWeight: "800", color: colors.brand },

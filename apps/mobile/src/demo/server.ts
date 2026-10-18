@@ -4,6 +4,7 @@ import {
   describeJobAvailability,
   jobFieldErrors,
   makeExcerpt,
+  validateJobImages,
   validateJobSchedule,
   type InviteState,
   type InterestStatus,
@@ -35,6 +36,7 @@ import {
   SCRIPT_OTHER_PROFILE_ID,
   type DemoJob,
 } from "./data";
+import { getJobImages } from "./images";
 import {
   addExtraInterest,
   createJob,
@@ -47,6 +49,7 @@ import {
   withdrawInterest,
   type CreatedJob,
 } from "./store";
+import { publishPhotos } from "../features/publish/photos";
 
 // "Servidor" do Modo Demonstração: responde, em memória, às mesmas rotas e com os mesmos formatos
 // da API real (os clientes do app validam tudo com os contratos compartilhados). Nenhuma chamada
@@ -89,6 +92,7 @@ function createdAsDemoJob(created: CreatedJob): DemoJob {
     ownerCity: DEMO_USER.city,
     mine: true,
     draft: created.publishedAt === null,
+    photoCount: getJobImages(created.id).length,
     publishedAt: created.publishedAt ?? created.createdAt,
     expiresAt: created.expiresAt,
     createdAt: created.createdAt,
@@ -214,6 +218,7 @@ function summary(job: DemoJob) {
     status: jobStatus(job),
     isDemo: false,
     publishedAt: job.publishedAt,
+    photoCount: job.photoCount ?? 0,
   };
 }
 
@@ -228,6 +233,7 @@ function detail(job: DemoJob) {
     owner: { name: job.ownerName, city: job.ownerCity, isDemo: false },
     acceptingInterests: availability.acceptingInterests,
     statusMessage: availability.message,
+    images: getJobImages(job.id),
   };
 }
 
@@ -404,7 +410,10 @@ function createOwnJob(bodyText: string | undefined): DemoResponse {
   if (!CATEGORIES.some((category) => category.id === input.categoryId)) {
     return validation({ categoryId: "Escolha uma categoria válida." });
   }
-  const created = createJob(
+  // As fotos vêm do formulário de publicação (em memória); a requisição não as carrega.
+  const photos = validateJobImages(publishPhotos.getState().images);
+  if (!photos.ok) return validation({ images: photos.message });
+  const result = createJob(
     {
       title: input.title,
       description: input.description,
@@ -419,8 +428,11 @@ function createOwnJob(bodyText: string | undefined): DemoResponse {
       expiresAt: input.expiresAt,
     },
     publish === true,
+    photos.images,
   );
-  return { status: 201, body: { job: ownJob(createdAsDemoJob(created)) } };
+  // Sem espaço para as fotos nada é criado: a pessoa vê o motivo e nenhuma oportunidade fica pela metade.
+  if (!result.ok) return fail(409, "images_not_saved", result.message);
+  return { status: 201, body: { job: ownJob(createdAsDemoJob(result.job)) } };
 }
 
 /** POST /me/jobs/:id/publish: só rascunhos criados na apresentação podem ser publicados. */
