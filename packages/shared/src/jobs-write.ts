@@ -116,12 +116,16 @@ const jobFieldShape = {
   startTime: z
     .string({ error: "Informe o horário do serviço." })
     .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário válido, como 08:00."),
-  /** Valor em centavos (R$ 200,00 = 20000). */
+  /**
+   * Valor em centavos (R$ 200,00 = 20000), maior que zero. `null` = "A negociar": sem valor definido
+   * (e então `negotiable` precisa ser verdadeiro). Zero nunca é um preço.
+   */
   proposedPriceCents: z
-    .number({ error: "Informe o valor." })
+    .number({ error: "Informe o valor ou marque “A negociar”." })
     .int("O valor precisa ser em centavos inteiros.")
-    .min(0, "O valor não pode ser negativo.")
-    .max(JOB_PRICE_MAX_CENTS, "O valor é maior que o permitido."),
+    .min(1, "O valor precisa ser maior que zero.")
+    .max(JOB_PRICE_MAX_CENTS, "O valor é maior que o permitido.")
+    .nullable(),
   negotiable: z.boolean({ error: "Informe se o valor é negociável." }),
   /** Fim do prazo da publicação, como instante ISO 8601 com fuso (ex.: "2026-10-20T23:59:00-03:00"). */
   expiresAt: z
@@ -130,19 +134,47 @@ const jobFieldShape = {
 };
 
 /** Criação. `publish: true` cria já publicada; o padrão é salvar como rascunho. */
-export const createJobSchema = z.strictObject({
-  ...jobFieldShape,
-  additionalInfo: jobFieldShape.additionalInfo.optional(),
-  negotiable: jobFieldShape.negotiable.optional(),
-  publish: z.boolean({ error: "O campo publish deve ser verdadeiro ou falso." }).optional(),
-});
+export const NO_PRICE_NEGOTIABLE_MESSAGE =
+  "Sem valor definido, a oportunidade precisa estar marcada como “A negociar”.";
+
+export const PRICE_TO_REGULARIZE_MESSAGE = "Defina um valor maior que zero ou marque “A negociar” antes de publicar.";
+
+/**
+ * Confere o valor de uma oportunidade que já existe antes de publicá-la (um rascunho antigo pode ter
+ * zero ou outro valor que a criação de hoje não aceitaria). Devolve mensagens por campo da API.
+ */
+export function validateJobPriceForPublish(priceCents: number | null, negotiable: boolean): Record<string, string> {
+  if (priceCents === null) return negotiable ? {} : { negotiable: NO_PRICE_NEGOTIABLE_MESSAGE };
+  if (!Number.isInteger(priceCents) || priceCents < 1 || priceCents > JOB_PRICE_MAX_CENTS) {
+    return { proposedPriceCents: PRICE_TO_REGULARIZE_MESSAGE };
+  }
+  return {};
+}
+
+export const createJobSchema = z
+  .strictObject({
+    ...jobFieldShape,
+    additionalInfo: jobFieldShape.additionalInfo.optional(),
+    negotiable: jobFieldShape.negotiable.optional(),
+    publish: z.boolean({ error: "O campo publish deve ser verdadeiro ou falso." }).optional(),
+  })
+  // "A negociar" = sem valor E negociável. Sem valor e "valor fixo" é uma combinação sem sentido.
+  .refine((value) => value.proposedPriceCents !== null || value.negotiable === true, {
+    error: NO_PRICE_NEGOTIABLE_MESSAGE,
+    path: ["negotiable"],
+  });
 export type CreateJobInput = z.output<typeof createJobSchema>;
 
 /** Edição parcial: só os campos enviados mudam. Pelo menos um campo é obrigatório. */
 export const updateJobSchema = z
   .strictObject(jobFieldShape)
   .partial()
-  .refine((value) => Object.keys(value).length > 0, "Envie ao menos um campo para alterar.");
+  .refine((value) => Object.keys(value).length > 0, "Envie ao menos um campo para alterar.")
+  // Quando os dois vêm juntos, a combinação precisa fazer sentido (com um só, a API confere com o que já está salvo).
+  .refine((value) => !(value.proposedPriceCents === null && value.negotiable === false), {
+    error: NO_PRICE_NEGOTIABLE_MESSAGE,
+    path: ["negotiable"],
+  });
 export type UpdateJobInput = z.output<typeof updateJobSchema>;
 
 /**
@@ -283,7 +315,8 @@ export const ownJobSchema = z.object({
   state: z.string(),
   scheduledDate: z.string(),
   startTime: z.string(),
-  proposedPriceCents: z.number().int().nonnegative(),
+  /** Centavos; `null` = "A negociar". Dados antigos podem ter zero: não é um preço, a tela mostra "A negociar". */
+  proposedPriceCents: z.number().int().nonnegative().nullable(),
   negotiable: z.boolean(),
   status: ownJobStatusSchema,
   isDemo: z.boolean(),

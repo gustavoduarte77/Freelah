@@ -2,6 +2,7 @@ import {
   emptyJobForm,
   suggestDeadlineDate,
   maskDateInput,
+  maskPriceInput,
   maskStateInput,
   maskTimeInput,
   type JobFormErrors,
@@ -55,6 +56,7 @@ export function createJobFormStore(first: PublishDraftState) {
       if (field === "scheduledDate" || field === "deadlineDate") value = maskDateInput(String(raw)) as JobFormValues[K];
       else if (field === "startTime") value = maskTimeInput(String(raw)) as JobFormValues[K];
       else if (field === "state") value = maskStateInput(String(raw)) as JobFormValues[K];
+      else if (field === "price") value = maskPriceInput(String(raw)) as JobFormValues[K];
 
       const values = { ...state.values, [field]: value };
       let deadlineTouched = state.deadlineTouched;
@@ -63,8 +65,11 @@ export function createJobFormStore(first: PublishDraftState) {
       if (field === "scheduledDate" && !deadlineTouched) {
         values.deadlineDate = suggestDeadlineDate(String(value), new Date());
       }
+      // Ligar "A negociar" limpa o valor digitado; ao desligar, o valor volta vazio e precisa ser informado de novo.
+      if (field === "toNegotiate" && value === true) values.price = "";
       const errors = { ...state.errors };
-      if (field !== "negotiable") delete errors[field as JobFormField];
+      if (field !== "negotiable" && field !== "toNegotiate") delete errors[field as JobFormField];
+      if (field === "toNegotiate") delete errors.price;
       if (field === "scheduledDate" || field === "startTime") delete errors.deadlineDate;
       delete errors._;
       set({ ...state, values, errors, deadlineTouched });

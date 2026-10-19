@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { conversationSchema } from "./chat";
-import { formatRating, publicProfileResponseSchema } from "./profiles";
+import { formatRating, publicProfileResponseSchema, rolesFromPreferences } from "./profiles";
 
 describe("formatRating", () => {
   it("usa uma casa decimal com vírgula", () => {
@@ -37,6 +37,12 @@ describe("publicProfileResponseSchema", () => {
     expect(parsed.profile.rating).toBeNull();
     expect(parsed.profile.reviews).toEqual([]);
     expect(parsed.profile.isDemo).toBe(false);
+    expect(parsed.profile.roles).toEqual([]);
+  });
+
+  it("aceita os papéis PROFESSIONAL e CLIENT e rejeita outros valores", () => {
+    expect(publicProfileResponseSchema.parse({ profile: { ...profile, roles: ["PROFESSIONAL", "CLIENT"] } }).profile.roles).toEqual(["PROFESSIONAL", "CLIENT"]);
+    expect(publicProfileResponseSchema.safeParse({ profile: { ...profile, roles: ["ADMIN"] } }).success).toBe(false);
   });
 
   it("aceita avaliações de 1 a 5 e rejeita notas fora disso", () => {
@@ -70,5 +76,18 @@ describe("conversationSchema.other.profileId", () => {
   it("é mantido quando o servidor informa o perfil", () => {
     const parsed = conversationSchema.parse({ ...conversation, other: { name: "Mariana", profileId: "p1" } });
     expect(parsed.other.profileId).toBe("p1");
+  });
+});
+
+describe("rolesFromPreferences", () => {
+  it("encontrar trabalho é Profissional e contratar alguém é Contratante", () => {
+    expect(rolesFromPreferences({ wantsWork: true, wantsToHire: false })).toEqual(["PROFESSIONAL"]);
+    expect(rolesFromPreferences({ wantsWork: false, wantsToHire: true })).toEqual(["CLIENT"]);
+    expect(rolesFromPreferences({ wantsWork: true, wantsToHire: true })).toEqual(["PROFESSIONAL", "CLIENT"]);
+  });
+
+  it("sem preferências, nenhum papel", () => {
+    expect(rolesFromPreferences(null)).toEqual([]);
+    expect(rolesFromPreferences(undefined)).toEqual([]);
   });
 });

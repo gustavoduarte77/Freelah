@@ -157,9 +157,9 @@ describe.skipIf(!testDatabaseUrl)("formulário de publicação x API real (integ
       expect(new Date(job.expiresAt).getTime()).toBeGreaterThan(Date.now());
     });
 
-    it("valor zero, informações adicionais e valor com vírgula", async () => {
-      const free = await api().create(built(form({ price: "0", additionalInfo: "Levar o material." })).request);
-      expect(free).toMatchObject({ proposedPriceCents: 0, additionalInfo: "Levar o material." });
+    it("valor mínimo (1 centavo), informações adicionais e valor com vírgula", async () => {
+      const cheap = await api().create(built(form({ price: "0,01", additionalInfo: "Levar o material." })).request);
+      expect(cheap).toMatchObject({ proposedPriceCents: 1, additionalInfo: "Levar o material." });
       const cents = await api().create(built(form({ price: "1234,56" })).request);
       expect(cents.proposedPriceCents).toBe(123456);
     });

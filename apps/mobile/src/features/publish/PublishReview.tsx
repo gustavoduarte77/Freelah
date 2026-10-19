@@ -4,7 +4,9 @@ import {
   describeDeadline,
   describeSubmissionError,
   formatBrDate,
+  formatJobPrice,
   formatPriceCents,
+  hasDefinedPrice,
   mapServerFields,
   type Category,
   type SubmissionMode,
@@ -127,7 +129,11 @@ export function PublishReview({
       <Row label="Categoria" value={category} />
       <Row
         label="Valor"
-        value={`${formatPriceCents(request.proposedPriceCents)}${request.negotiable ? " · negociável" : " · valor fixo"}`}
+        value={
+          hasDefinedPrice(request.proposedPriceCents)
+            ? `${formatPriceCents(request.proposedPriceCents)}${request.negotiable ? " · negociável" : " · valor fixo"}`
+            : formatJobPrice(request.proposedPriceCents)
+        }
       />
       <Row label="Local" value={`${request.city}/${request.state}`} />
       <Row label="Data e horário do serviço" value={`${formatBrDate(request.scheduledDate)} às ${request.startTime}`} />

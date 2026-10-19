@@ -1,10 +1,11 @@
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { jobDetailSchema, jobsResponseSchema, ownJobResponseSchema, ownJobsResponseSchema } from "@freelah/shared";
+import { JOB_PRICE_MAX_CENTS, jobDetailSchema, jobsResponseSchema, ownJobResponseSchema, ownJobsResponseSchema } from "@freelah/shared";
 import { createApp } from "./app";
 import { createAuth } from "./auth";
 import type { PrismaClient } from "./db";
 import type { JobStatus } from "./generated/prisma/client";
+import { expireOverdueJobs } from "./expiry";
 import { connectTestDatabase, testDatabaseUrl, truncateAll } from "./test-support";
 
 const ORIGIN = "http://localhost:8081";
@@ -98,7 +99,11 @@ describe.skipIf(!testDatabaseUrl)("minhas oportunidades: criar, editar, publicar
   }
 
   /** Linha direta no banco, para estados que a API (ainda) não produz sozinha. */
-  async function insertJob(ownerId: string, status: JobStatus, over: { expiresAt?: Date; publishedAt?: Date | null } = {}) {
+  async function insertJob(
+    ownerId: string,
+    status: JobStatus,
+    over: { expiresAt?: Date; publishedAt?: Date | null; proposedPriceCents?: number | null; negotiable?: boolean } = {},
+  ) {
     const hired = status === "HIRED" || status === "COMPLETED";
     const job = await prisma.job.create({
       data: {
@@ -110,7 +115,8 @@ describe.skipIf(!testDatabaseUrl)("minhas oportunidades: criar, editar, publicar
         state: "MG",
         scheduledDate: new Date("2030-01-10T00:00:00.000Z"),
         startTime: "08:00",
-        proposedPriceCents: 10000,
+        proposedPriceCents: over.proposedPriceCents === undefined ? 10000 : over.proposedPriceCents,
+        ...(over.negotiable === undefined ? {} : { negotiable: over.negotiable }),
         expiresAt: over.expiresAt ?? new Date(Date.now() + 5 * DAY),
         status: hired ? "PUBLISHED" : status,
         publishedAt: over.publishedAt === undefined ? (status === "DRAFT" ? null : new Date()) : over.publishedAt,
@@ -257,6 +263,9 @@ describe.skipIf(!testDatabaseUrl)("minhas oportunidades: criar, editar, publicar
         [{ title: "" }, "title"],
         [{ description: "curta" }, "description"],
         [{ proposedPriceCents: -1 }, "proposedPriceCents"],
+        [{ proposedPriceCents: 0 }, "proposedPriceCents"],
+        [{ proposedPriceCents: JOB_PRICE_MAX_CENTS + 1 }, "proposedPriceCents"],
+        [{ proposedPriceCents: null, negotiable: false }, "negotiable"],
         [{ proposedPriceCents: 10.5 }, "proposedPriceCents"],
         [{ state: "XX" }, "state"],
         [{ city: " " }, "city"],
@@ -311,9 +320,24 @@ describe.skipIf(!testDatabaseUrl)("minhas oportunidades: criar, editar, publicar
       expect(await prisma.job.count()).toBe(0);
     });
 
-    it("aceita valor zero (a combinar)", async () => {
+    it("recusa valor zero: zero não é um preço", async () => {
       const { agent } = await signUp();
-      expect((await post(agent, "/me/jobs", body({ proposedPriceCents: 0 }))).status).toBe(201);
+      const res = await post(agent, "/me/jobs", body({ proposedPriceCents: 0 }));
+      expect(res.status).toBe(400);
+      expect(res.body.fields.proposedPriceCents).toEqual(expect.any(String));
+      expect(await prisma.job.count()).toBe(0);
+    });
+
+    it("\"A negociar\": aceita valor null só com negociável verdadeiro e guarda NULL, nunca zero", async () => {
+      const { agent } = await signUp();
+      const res = await post(agent, "/me/jobs", body({ proposedPriceCents: null, negotiable: true }));
+      expect(res.status).toBe(201);
+      expect(res.body.job).toMatchObject({ proposedPriceCents: null, negotiable: true });
+      const row = await prisma.job.findFirstOrThrow();
+      expect(row.proposedPriceCents).toBeNull();
+      expect((await post(agent, "/me/jobs", body({ proposedPriceCents: null, negotiable: false }))).status).toBe(400);
+      expect((await post(agent, "/me/jobs", body({ proposedPriceCents: null, negotiable: undefined }))).status).toBe(400);
+      expect(await prisma.job.count()).toBe(1);
     });
 
     it("JSON malformado ou corpo que não é objeto é erro 400, nunca 500", async () => {
@@ -391,6 +415,29 @@ describe.skipIf(!testDatabaseUrl)("minhas oportunidades: criar, editar, publicar
 
   // =========================================================================
   describe("editar", () => {
+    it("troca o valor por \"A negociar\" e volta, sempre conferindo valor e negociável juntos", async () => {
+      const { agent } = await signUp();
+      const job = await createJob(agent);
+      expect(job).toMatchObject({ proposedPriceCents: 20000, negotiable: true });
+      // sem valor
+      const toNull = await patch(agent, job.id, { proposedPriceCents: null });
+      expect(toNull.status).toBe(200);
+      expect(toNull.body.job).toMatchObject({ proposedPriceCents: null, negotiable: true });
+      // desmarcar "negociável" sem valor é recusado, e nada muda
+      const bad = await patch(agent, job.id, { negotiable: false });
+      expect(bad.status).toBe(400);
+      expect(bad.body.fields.negotiable).toEqual(expect.any(String));
+      expect((await prisma.job.findUniqueOrThrow({ where: { id: job.id } })).proposedPriceCents).toBeNull();
+      // zero continua recusado; um valor positivo volta a valer
+      expect((await patch(agent, job.id, { proposedPriceCents: 0 })).status).toBe(400);
+      const back = await patch(agent, job.id, { proposedPriceCents: 31000, negotiable: false });
+      expect(back.status).toBe(200);
+      expect(back.body.job).toMatchObject({ proposedPriceCents: 31000, negotiable: false });
+      // com valor fixo, voltar a "A negociar" exige negociável junto
+      expect((await patch(agent, job.id, { proposedPriceCents: null })).status).toBe(400);
+      expect((await patch(agent, job.id, { proposedPriceCents: null, negotiable: true })).status).toBe(200);
+    });
+
     it("altera só os campos enviados e atualiza a versão", async () => {
       const { agent } = await signUp();
       const job = await createJob(agent);
@@ -895,6 +942,101 @@ describe.skipIf(!testDatabaseUrl)("minhas oportunidades: criar, editar, publicar
       const job = await createJob(agent);
       expect((await request(app).get(`/jobs/${job.id}`)).status).toBe(404);
       expect((await request(app).get("/jobs/me")).status).toBe(404);
+    });
+  });
+
+  // =========================================================================
+  describe("registros antigos com valor zero (compatibilidade)", () => {
+    const legacy = (ownerId: string, status: JobStatus, over: { expiresAt?: Date; negotiable?: boolean } = {}) =>
+      insertJob(ownerId, status, { proposedPriceCents: 0, negotiable: false, ...over });
+    const rowOf = (id: string) => prisma.job.findUniqueOrThrow({ where: { id } });
+
+    it("publicar um rascunho com zero é recusado e orienta a definir o valor ou marcar A negociar; nada é gravado", async () => {
+      const { agent, id } = await signUp();
+      const row = await legacy(id, "DRAFT");
+      const res = await post(agent, `/me/jobs/${row.id}/publish`);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("validation_error");
+      expect(res.body.fields.proposedPriceCents).toMatch(/A negociar/);
+      const after = await rowOf(row.id);
+      expect(after).toMatchObject({ status: "DRAFT", publishedAt: null, proposedPriceCents: 0 });
+    });
+
+    it("editar outros campos não converte o zero em A negociar nem mexe em negociável", async () => {
+      const { agent, id } = await signUp();
+      const row = await legacy(id, "DRAFT");
+      const res = await patch(agent, row.id, { title: "Título corrigido" });
+      expect(res.status).toBe(200);
+      expect(res.body.job).toMatchObject({ proposedPriceCents: 0, negotiable: false });
+      expect(await rowOf(row.id)).toMatchObject({ proposedPriceCents: 0, negotiable: false, title: "Título corrigido" });
+    });
+
+    it("regularizado com um valor válido, o rascunho publica", async () => {
+      const { agent, id } = await signUp();
+      const row = await legacy(id, "DRAFT");
+      expect((await patch(agent, row.id, { proposedPriceCents: 25000 })).status).toBe(200);
+      const res = await post(agent, `/me/jobs/${row.id}/publish`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(await rowOf(row.id)).toMatchObject({ status: "PUBLISHED", proposedPriceCents: 25000 });
+    });
+
+    it("regularizado com A negociar (null + negociável), o rascunho publica", async () => {
+      const { agent, id } = await signUp();
+      const row = await legacy(id, "DRAFT");
+      expect((await patch(agent, row.id, { proposedPriceCents: null, negotiable: true })).status).toBe(200);
+      expect((await post(agent, `/me/jobs/${row.id}/publish`)).status).toBe(200);
+      expect(await rowOf(row.id)).toMatchObject({ status: "PUBLISHED", proposedPriceCents: null, negotiable: true });
+    });
+
+    it("zero continua recusado em qualquer escrita de valor", async () => {
+      const { agent, id } = await signUp();
+      const row = await legacy(id, "DRAFT");
+      expect((await patch(agent, row.id, { proposedPriceCents: 0 })).status).toBe(400);
+      expect(await rowOf(row.id)).toMatchObject({ proposedPriceCents: 0 });
+    });
+
+    it("cancelar, expirar e concluir um registro antigo funcionam normalmente", async () => {
+      const { agent, id } = await signUp();
+      const published = await legacy(id, "PUBLISHED");
+      const cancelled = await post(agent, `/me/jobs/${published.id}/cancel`);
+      expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+      expect((await rowOf(published.id)).status).toBe("CANCELLED");
+
+      const overdue = await legacy(id, "PUBLISHED", { expiresAt: new Date(Date.now() - HOUR) });
+      await expireOverdueJobs(prisma, new Date(), id);
+      expect((await rowOf(overdue.id)).status).toBe("EXPIRED");
+
+      const hired = await legacy(id, "HIRED");
+      const completed = await post(agent, `/me/jobs/${hired.id}/complete`);
+      expect(completed.status, JSON.stringify(completed.body)).toBe(200);
+      expect((await rowOf(hired.id)).status).toBe("COMPLETED");
+      // o valor antigo nunca foi reescrito
+      for (const job of [published, overdue, hired]) expect((await rowOf(job.id)).proposedPriceCents).toBe(0);
+    });
+
+    it("a leitura devolve o zero como está (sem converter) e o contrato aceita", async () => {
+      const { agent, id } = await signUp();
+      const row = await legacy(id, "PUBLISHED");
+      const own = await agent.get(`/me/jobs/${row.id}`);
+      expect(ownJobResponseSchema.parse(own.body).job.proposedPriceCents).toBe(0);
+      const detail = await request(app).get(`/jobs/${row.id}`);
+      expect(jobDetailSchema.parse(detail.body)).toMatchObject({ proposedPriceCents: 0, negotiable: false });
+    });
+
+    it("filtros de valor excluem zero e sem valor; sem filtro, os dois aparecem", async () => {
+      const { id } = await signUp();
+      const zero = await legacy(id, "PUBLISHED");
+      const open = await insertJob(id, "PUBLISHED", { proposedPriceCents: null, negotiable: true });
+      const priced = await insertJob(id, "PUBLISHED", { proposedPriceCents: 15000 });
+      const ids = async (query: string) => (await request(app).get(`/jobs${query}`)).body.jobs.map((job: { id: string }) => job.id);
+      expect(await ids("")).toEqual(expect.arrayContaining([zero.id, open.id, priced.id]));
+      for (const query of ["?minPriceCents=0", "?maxPriceCents=999999", "?minPriceCents=1&maxPriceCents=99999999"]) {
+        const found = await ids(query);
+        expect(found, query).toContain(priced.id);
+        expect(found, query).not.toContain(zero.id);
+        expect(found, query).not.toContain(open.id);
+      }
+      expect(await ids("?minPriceCents=20000")).not.toContain(priced.id);
     });
   });
 });

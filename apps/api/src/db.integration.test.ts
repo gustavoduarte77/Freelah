@@ -72,6 +72,17 @@ describe.skipIf(!testDatabaseUrl)("integridade do banco (integração)", () => {
     ).resolves.toBeTruthy();
   });
 
+  it("sem valor (A negociar) exige negociável, e valor NULL é aceito", async () => {
+    const owner = await makeUser();
+    const job = await makeJob(owner.id);
+    await expect(
+      prisma.job.update({ where: { id: job.id }, data: { proposedPriceCents: null, negotiable: false } }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.job.update({ where: { id: job.id }, data: { proposedPriceCents: null, negotiable: true } }),
+    ).resolves.toMatchObject({ proposedPriceCents: null, negotiable: true });
+  });
+
   it("rejeita valor negativo e horário inválido", async () => {
     const owner = await makeUser();
     const job = await makeJob(owner.id);

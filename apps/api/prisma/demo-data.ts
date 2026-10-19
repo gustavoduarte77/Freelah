@@ -333,6 +333,114 @@ export function buildDemoJobs(now: Date): DemoJob[] {
       publishedAt: null,
       expiresAt: at(30 * DAY),
     },
+    {
+      id: jobId(15),
+      title: "Formatação e limpeza de notebook lento",
+      description:
+        "Notebook muito lento: preciso formatar, reinstalar o Windows e os programas básicos e fazer uma limpeza interna. Os arquivos já estão salvos em um HD externo.",
+      additionalInfo: "Posso levar o notebook até o local combinado.",
+      category: "tecnologia-e-suporte",
+      ownerId: "demo-contratante-1",
+      city: "Cataguases",
+      state: "MG",
+      scheduledDate: day(4),
+      startTime: "15:00",
+      proposedPriceCents: 12000,
+      negotiable: true,
+      status: "PUBLISHED",
+      publishedAt: at(-3 * HOUR),
+      expiresAt: open.expiresAt,
+    },
+    {
+      id: jobId(16),
+      title: "Configuração de Wi-Fi e roteador em casa",
+      description:
+        "O sinal não chega aos quartos do fundo. Preciso configurar o roteador novo, reposicionar o equipamento e instalar um repetidor de sinal.",
+      additionalInfo: null,
+      category: "tecnologia-e-suporte",
+      ownerId: "demo-contratante-2",
+      city: "Leopoldina",
+      state: "MG",
+      scheduledDate: day(3),
+      startTime: "10:00",
+      proposedPriceCents: 9000,
+      negotiable: false,
+      status: "PUBLISHED",
+      publishedAt: at(-4 * HOUR),
+      expiresAt: open.expiresAt,
+    },
+    {
+      id: jobId(17),
+      title: "Criação de site simples para loja de roupas",
+      description:
+        "Site de apresentação com página inicial, catálogo com fotos, endereço, horário e botão de contato por WhatsApp. Não precisa de pagamento online.",
+      additionalInfo: "Prefiro entregas parciais a cada semana.",
+      category: "sites-e-aplicativos",
+      ownerId: "demo-contratante-3",
+      city: "Muriaé",
+      state: "MG",
+      scheduledDate: day(12),
+      startTime: "09:00",
+      proposedPriceCents: 80000,
+      negotiable: true,
+      status: "PUBLISHED",
+      publishedAt: at(-6 * HOUR),
+      expiresAt: open.expiresAt,
+    },
+    {
+      id: jobId(18),
+      title: "Automação de planilha de controle de estoque",
+      description:
+        "Planilha de estoque que calcule quantidades mínimas, avise quando um item estiver acabando e gere um resumo semanal de compras.",
+      additionalInfo: null,
+      category: "sites-e-aplicativos",
+      ownerId: "demo-contratante-3",
+      city: "Muriaé",
+      state: "MG",
+      scheduledDate: day(7),
+      startTime: "13:30",
+      proposedPriceCents: 35000,
+      negotiable: false,
+      status: "PUBLISHED",
+      publishedAt: at(-7 * HOUR),
+      expiresAt: open.expiresAt,
+    },
+    {
+      id: jobId(19),
+      title: "Criação de logotipo para confeitaria caseira",
+      description:
+        "Logotipo simples e delicado, em versão colorida e em preto e branco, para embalagens e redes sociais. Até duas rodadas de ajustes.",
+      additionalInfo: "Entrega em PNG e PDF.",
+      category: "design-e-criacao-digital",
+      ownerId: "demo-contratante-1",
+      city: "Cataguases",
+      state: "MG",
+      scheduledDate: day(9),
+      startTime: "16:00",
+      proposedPriceCents: 25000,
+      negotiable: true,
+      status: "PUBLISHED",
+      publishedAt: at(-8 * HOUR),
+      expiresAt: open.expiresAt,
+    },
+    {
+      id: jobId(20),
+      title: "Posts para redes sociais e edição de vídeo curto",
+      description:
+        "Oito posts para o Instagram de um estúdio de pilates e a edição de um vídeo de 40 segundos com legenda e trilha livre de direitos autorais.",
+      additionalInfo: null,
+      category: "design-e-criacao-digital",
+      ownerId: "demo-contratante-2",
+      city: "Leopoldina",
+      state: "MG",
+      scheduledDate: day(6),
+      startTime: "11:00",
+      proposedPriceCents: 40000,
+      negotiable: false,
+      status: "PUBLISHED",
+      publishedAt: at(-9 * HOUR),
+      expiresAt: open.expiresAt,
+    },
   ];
   // O prazo de publicação vem antes do serviço (regra do produto): 12 h antes do horário marcado
   // (horário de Brasília, UTC-3). A oportunidade de prazo encerrado fica como está de propósito.
@@ -344,5 +452,5 @@ export function buildDemoJobs(now: Date): DemoJob[] {
   });
 }
 
-/** Quantas oportunidades aparecem na exploração depois do seed (as 10 primeiras). */
-export const DEMO_VISIBLE_JOB_COUNT = 10;
+/** Quantas oportunidades aparecem na exploração depois do seed (as 16 publicadas e dentro do prazo). */
+export const DEMO_VISIBLE_JOB_COUNT = 16;

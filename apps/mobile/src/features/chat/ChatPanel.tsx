@@ -4,6 +4,7 @@ import {
   type ChatMessage,
   type Conversation,
   type MyJobsApiError,
+  type ProposalsResponse,
 } from "@freelah/shared";
 import { useRouter, type Href } from "expo-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -16,6 +17,8 @@ import { focusRing, noInnerOutline, radius } from "../../theme";
 import { LoadingBox } from "../jobs/components";
 import { HireBanner } from "./HireBanner";
 import { HireConfirmedModal, hasSeenHire, markHireSeen } from "./HireConfirmedModal";
+import { ProposalCard } from "./ProposalCard";
+import { ProposalComposer } from "./ProposalComposer";
 import { myJobsApi } from "../publish/api";
 
 type LoadState =
@@ -58,6 +61,8 @@ export function ChatPanel({
   const router = useRouter();
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Propostas de valor da conversa (null enquanto não carregaram ou se a API ainda não oferece o recurso).
+  const [proposals, setProposals] = useState<ProposalsResponse | null>(null);
   const [pollFailed, setPollFailed] = useState(false);
   const [text, setText] = useState("");
   const [send, setSend] = useState<SendState>({ kind: "idle" });
@@ -88,6 +93,15 @@ export function ChatPanel({
     };
   }, [conversationId]);
 
+  /** Relê as propostas (poucas por conversa). Falha não apaga nada da tela. */
+  async function refreshProposals() {
+    try {
+      setProposals(await myJobsApi.proposals(conversationId));
+    } catch {
+      // mantém o que já está na tela
+    }
+  }
+
   /** Busca só as mensagens depois da última vista. Falha de rede não apaga nada da tela. */
   async function poll() {
     if (polling.current) return;
@@ -100,6 +114,7 @@ export function ChatPanel({
       setMessages((current) => merge(current, news.messages));
       setPollFailed(false);
       void refreshConversation();
+      void refreshProposals();
     } catch {
       setPollFailed(true);
     } finally {
@@ -116,6 +131,7 @@ export function ChatPanel({
       cursor.current = history.cursor;
       setMessages(history.messages);
       setLoad({ status: "ready", conversation });
+      void refreshProposals();
     } catch {
       // mantém o que já está na tela
     }
@@ -142,6 +158,17 @@ export function ChatPanel({
   }, [confirmFor]);
 
   const ready = load.status === "ready";
+  useEffect(() => {
+    if (!ready) return;
+    let active = true;
+    myJobsApi.proposals(conversationId).then(
+      (result) => active && setProposals(result),
+      () => undefined, // sem o recurso (ou sem conexão): a conversa segue sem propostas
+    );
+    return () => {
+      active = false;
+    };
+  }, [ready, conversationId]);
   useEffect(() => {
     if (!ready) return;
     const timer = setInterval(() => void poll(), CHAT_POLL_INTERVAL_MS);
@@ -209,6 +236,11 @@ export function ChatPanel({
   const { conversation } = load;
   const busy = send.kind === "sending";
   const canSubmit = !busy && text.trim().length > 0;
+  // Mensagens e propostas na ordem em que aconteceram (as propostas aparecem como cartões próprios).
+  const timeline = [
+    ...messages.map((message) => ({ kind: "message" as const, at: message.createdAt, message })),
+    ...(proposals?.proposals ?? []).map((proposal) => ({ kind: "proposal" as const, at: proposal.createdAt, proposal })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
   return (
     <View style={styles.chat}>
       <View style={styles.header}>
@@ -243,19 +275,29 @@ export function ChatPanel({
         onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
         testID="chat-messages"
       >
-        {messages.length === 0 ? (
+        {messages.length === 0 && (proposals?.proposals.length ?? 0) === 0 ? (
           <Text style={styles.empty}>Ainda não há mensagens. Escreva a primeira.</Text>
         ) : (
-          messages.map((message) => (
-            <View key={message.id} style={[styles.bubble, message.fromMe ? styles.mine : styles.theirs]} testID="chat-message">
-              <Text style={message.fromMe ? styles.mineText : styles.theirsText}>{message.content}</Text>
-              <Text style={message.fromMe ? styles.mineTime : styles.theirsTime}>{hhmm(message.createdAt)}</Text>
-            </View>
-          ))
+          timeline.map((item) =>
+            item.kind === "proposal" ? (
+              <ProposalCard key={`proposal-${item.proposal.id}`} proposal={item.proposal} onChanged={() => void refreshProposals()} />
+            ) : (
+              <View key={item.message.id} style={[styles.bubble, item.message.fromMe ? styles.mine : styles.theirs]} testID="chat-message">
+                <Text style={item.message.fromMe ? styles.mineText : styles.theirsText}>{item.message.content}</Text>
+                <Text style={item.message.fromMe ? styles.mineTime : styles.theirsTime}>{hhmm(item.message.createdAt)}</Text>
+              </View>
+            ),
+          )
         )}
       </ScrollView>
 
       <HireConfirmedModal visible={confirmFor !== null} conversation={conversation} onClose={() => setConfirmFor(null)} />
+
+      {proposals ? (
+        <View style={styles.proposalBar}>
+          <ProposalComposer conversationId={conversationId} state={proposals} onSent={() => void refreshProposals()} />
+        </View>
+      ) : null}
 
       {conversation.canSend ? (
         <View style={styles.composer}>
@@ -365,6 +407,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, minWidth: 0, gap: 1 },
   title: { fontSize: 18, fontWeight: "800", color: colors.text },
   subtitle: { fontSize: 14, color: colors.muted },
+  proposalBar: { paddingHorizontal: 12, paddingTop: 8 },
   messages: { flex: 1, backgroundColor: colors.background, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
   messagesContent: { padding: 16, gap: 8, flexGrow: 1 },
   empty: { fontSize: 14, color: colors.muted, textAlign: "center", marginTop: 24 },

@@ -1,5 +1,17 @@
 import { notifyDataChanged } from "../lib/liveRefresh";
-import { CATEGORIES, HIRE_ACCEPT_STEP, HIRE_TOTAL_STEPS, INVITE_STEP, TOTAL_STEPS } from "./data";
+import { JOB_PRICE_MAX_CENTS, PROPOSAL_STATUSES, updateProfileSchema, type ProposalStatus, type UpdateProfileInput } from "@freelah/shared";
+import {
+  CATEGORIES,
+  HIRE_ACCEPT_STEP,
+  HIRE_CONVERSATION_ID,
+  HIRE_MESSAGES,
+  HIRE_PROPOSAL_AMOUNT_CENTS,
+  HIRE_PROPOSAL_STEP,
+  HIRE_TOTAL_STEPS,
+  INVITE_STEP,
+  SCRIPT_CONVERSATION_ID,
+  TOTAL_STEPS,
+} from "./data";
 import { clearAllJobImages, pruneJobImages, removeJobImages, saveJobImages } from "./images";
 
 // Estado local do Modo Demonstração. Fica só neste navegador (localStorage), nunca vai a servidor
@@ -18,11 +30,26 @@ export interface CreatedJob {
   state: string;
   scheduledDate: string;
   startTime: string;
-  proposedPriceCents: number;
+  /** Centavos (maior que zero); `null` = "A negociar", e então `negotiable` é verdadeiro. */
+  proposedPriceCents: number | null;
   negotiable: boolean;
   expiresAt: string;
   createdAt: string;
   publishedAt: string | null;
+}
+
+/** Proposta de valor de uma conversa do roteiro. As decisões e os pendentes ficam aqui, no estado da demonstração. */
+export interface DemoProposal {
+  id: string;
+  conversationId: string;
+  /** Foi a pessoa da demonstração (Lucas) quem propôs. */
+  fromMe: boolean;
+  amountCents: number;
+  status: ProposalStatus;
+  createdAt: string;
+  decidedAt: string | null;
+  /** Vem do roteiro (Roberto propõe numa etapa); some se a demonstração volta antes dela. */
+  scripted?: boolean;
 }
 
 /** Limite de segurança: cada registro é pequeno, mas o localStorage tem cota. */
@@ -51,6 +78,10 @@ export interface DemoState {
   hireEpoch: number;
   /** Oportunidades criadas na apresentação (a mais recente por último). Somem no "Reiniciar". */
   createdJobs: CreatedJob[];
+  /** Propostas de valor das duas conversas do roteiro. */
+  proposals: DemoProposal[];
+  /** Edição do perfil da própria conta (Lucas); `null` = perfil original do roteiro. Só ele muda: Roberto e Mariana não. */
+  profile: UpdateProfileInput | null;
 }
 
 const STORAGE_KEY = "freelah:demo:state:v1";
@@ -66,8 +97,85 @@ const INITIAL: DemoState = {
   hireInvited: false,
   hireEpoch: 0,
   createdJobs: [],
+  proposals: [],
+  profile: null,
 };
 
+/** A proposta que Roberto envia no roteiro, a partir da etapa HIRE_PROPOSAL_STEP. */
+function scriptedProposal(hireEpoch: number, others: readonly DemoProposal[]): DemoProposal {
+  const afterMessage = HIRE_MESSAGES[HIRE_PROPOSAL_STEP - 2]?.createdAt ?? new Date().toISOString();
+  // Se ela só chega depois de outras propostas da conversa, entra depois delas (a ordem da conversa não se inverte).
+  const latestOther = others.filter((proposal) => proposal.conversationId === HIRE_CONVERSATION_ID).map((proposal) => proposal.createdAt).sort().at(-1);
+  const createdAt = latestOther
+    ? new Date(Math.max(Date.parse(latestOther) + 1000, Date.now())).toISOString()
+    : new Date(Date.parse(afterMessage) + 30_000).toISOString();
+  return {
+    id: `demo-proposal-roberto-${hireEpoch}`,
+    conversationId: HIRE_CONVERSATION_ID,
+    fromMe: false,
+    amountCents: HIRE_PROPOSAL_AMOUNT_CENTS,
+    status: "PENDING",
+    createdAt,
+    decidedAt: null,
+    scripted: true,
+  };
+}
+
+/**
+ * Garante que a proposta do roteiro existe quando a etapa já passou dela. Ela respeita as regras da
+ * negociação: não chega enquanto a conversa já tem uma proposta pendente ou aceita (uma pendente por
+ * vez, acordo final) e aparece assim que isso deixa de valer.
+ */
+function syncScriptedProposal(next: DemoState): DemoState {
+  const has = next.proposals.some((proposal) => proposal.scripted);
+  const occupied = next.proposals.some(
+    (proposal) => proposal.conversationId === HIRE_CONVERSATION_ID && (proposal.status === "PENDING" || proposal.status === "ACCEPTED"),
+  );
+  if (next.hireStep >= HIRE_PROPOSAL_STEP && !has && !occupied) {
+    return { ...next, proposals: [...next.proposals, scriptedProposal(next.hireEpoch, next.proposals)] };
+  }
+  if (next.hireStep < HIRE_PROPOSAL_STEP && has) return { ...next, proposals: next.proposals.filter((proposal) => !proposal.scripted) };
+  return next;
+}
+
+/** Aceita só registros completos; no máximo uma pendente e uma aceita por conversa (as regras da API). */
+function loadProposals(value: unknown): DemoProposal[] {
+  if (!Array.isArray(value)) return [];
+  const known = new Set<string>([HIRE_CONVERSATION_ID, SCRIPT_CONVERSATION_ID]);
+  const proposals: DemoProposal[] = [];
+  const pending = new Set<string>();
+  const accepted = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) continue;
+    const p = item as Partial<DemoProposal>;
+    const valid =
+      isText(p.id) &&
+      p.id !== "" &&
+      isText(p.conversationId) &&
+      known.has(p.conversationId) &&
+      typeof p.fromMe === "boolean" &&
+      Number.isInteger(p.amountCents) &&
+      (p.amountCents as number) > 0 &&
+      (p.amountCents as number) <= JOB_PRICE_MAX_CENTS &&
+      (PROPOSAL_STATUSES as readonly unknown[]).includes(p.status) &&
+      isInstant(p.createdAt) &&
+      (p.decidedAt === null || isInstant(p.decidedAt));
+    if (!valid) continue;
+    const proposal = p as DemoProposal;
+    if (proposal.status === "PENDING") {
+      if (pending.has(proposal.conversationId)) continue;
+      pending.add(proposal.conversationId);
+    }
+    if (proposal.status === "ACCEPTED") {
+      if (accepted.has(proposal.conversationId)) continue;
+      accepted.add(proposal.conversationId);
+    }
+    proposals.push({ ...proposal, ...(proposal.scripted === true ? { scripted: true } : {}) });
+  }
+  return proposals.slice(-50);
+}
+
+let savedJobIds: string[] = [];
 const isText = (value: unknown): value is string => typeof value === "string";
 const isDay = (value: unknown): value is string => isText(value) && /^\d{4}-\d{2}-\d{2}$/.test(value);
 const isInstant = (value: unknown): value is string => isText(value) && Number.isFinite(Date.parse(value));
@@ -75,6 +183,8 @@ const isInstant = (value: unknown): value is string => isText(value) && Number.i
 /** Aceita só registros completos; qualquer item corrompido é descartado em vez de quebrar a demonstração. */
 function loadCreatedJobs(value: unknown): CreatedJob[] {
   if (!Array.isArray(value)) return [];
+  // Ids de TODOS os registros salvos, inclusive os descartados abaixo: as fotos deles não são apagadas.
+  savedJobIds = value.flatMap((item) => (typeof item === "object" && item !== null && isText((item as { id?: unknown }).id) ? [(item as { id: string }).id] : []));
   const jobs: CreatedJob[] = [];
   for (const item of value) {
     if (typeof item !== "object" || item === null) continue;
@@ -90,7 +200,11 @@ function loadCreatedJobs(value: unknown): CreatedJob[] {
       isText(job.state) &&
       isDay(job.scheduledDate) &&
       isText(job.startTime) &&
-      Number.isInteger(job.proposedPriceCents) &&
+      // Valor zero é um registro antigo recuperável ("Valor a confirmar"): é mantido, com as fotos, até o
+      // responsável regularizá-lo. Só o que não tem como existir (negativo, decimal, "sem valor e valor
+      // fixo") é descartado.
+      ((job.proposedPriceCents === null && job.negotiable === true) ||
+        (Number.isInteger(job.proposedPriceCents) && (job.proposedPriceCents as number) >= 0)) &&
       typeof job.negotiable === "boolean" &&
       isInstant(job.expiresAt) &&
       isInstant(job.createdAt) &&
@@ -100,6 +214,12 @@ function loadCreatedJobs(value: unknown): CreatedJob[] {
   return jobs.slice(-MAX_CREATED_JOBS);
 }
 
+/** Perfil salvo: só vale se passar na mesma validação da edição; estados antigos (sem o campo) ficam no original. */
+function loadProfile(value: unknown): UpdateProfileInput | null {
+  const parsed = updateProfileSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 function load(): DemoState {
   try {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
@@ -107,7 +227,7 @@ function load(): DemoState {
     const value = JSON.parse(raw) as Partial<DemoState>;
     const step = Number(value.step);
     const hireStep = Number(value.hireStep);
-    return {
+    return syncScriptedProposal({
       loggedIn: value.loggedIn === true,
       step: Number.isInteger(step) && step >= 1 && step <= TOTAL_STEPS ? step : 1,
       response: value.response === "accepted" || value.response === "declined" ? value.response : null,
@@ -119,15 +239,18 @@ function load(): DemoState {
       hireInvited: value.hireInvited === true,
       hireEpoch: Number.isInteger(value.hireEpoch) ? (value.hireEpoch as number) : 0,
       createdJobs: loadCreatedJobs(value.createdJobs),
-    };
+      proposals: loadProposals(value.proposals),
+      profile: loadProfile(value.profile),
+    });
   } catch {
     return { ...INITIAL };
   }
 }
 
 let state: DemoState = load();
-// Fotos de oportunidades que o estado carregado não conhece (por exemplo, depois de um estado corrompido).
-pruneJobImages(state.createdJobs.map((job) => job.id));
+// Fotos sem nenhum registro salvo correspondente. As de registros descartados por estarem corrompidos
+// ficam: apagar dados da pessoa sem necessidade não é recuperável.
+pruneJobImages(savedJobIds);
 /** Muda só quando nenhuma tela aberta sabe se atualizar sozinha: aí as telas são remontadas e releem o estado. */
 let version = 0;
 const listeners = new Set<() => void>();
@@ -171,6 +294,11 @@ export function back() {
   commit({ ...state, step: state.step - 1 }, true);
 }
 
+/** Guarda a edição do perfil da conta de demonstração. */
+export function saveProfile(profile: UpdateProfileInput) {
+  commit({ ...state, profile }, false);
+}
+
 /** Reinício completo: os dois roteiros, convites, contratações e interesses feitos durante a apresentação. */
 export function reset() {
   clearAllJobImages();
@@ -186,13 +314,13 @@ export const isHireWaitingInvite = (s: DemoState): boolean => s.hireStep === HIR
 
 export function advanceHire() {
   if (state.hireStep >= HIRE_TOTAL_STEPS || isHireWaitingInvite(state)) return;
-  commit({ ...state, hireStep: state.hireStep + 1 }, true);
+  commit(syncScriptedProposal({ ...state, hireStep: state.hireStep + 1 }), true);
 }
 
 /** Volta uma etapa; desfaz primeiro o aceite e depois o convite, na ordem inversa em que aconteceram. */
 export function backHire() {
   if (isHireAccepted(state)) {
-    commit({ ...state, hireStep: state.hireStep - 1, hireEpoch: state.hireEpoch + 1 }, true);
+    commit(syncScriptedProposal({ ...state, hireStep: state.hireStep - 1, hireEpoch: state.hireEpoch + 1 }), true);
     return;
   }
   if (state.hireInvited) {
@@ -200,7 +328,7 @@ export function backHire() {
     return;
   }
   if (state.hireStep <= 1) return;
-  commit({ ...state, hireStep: state.hireStep - 1 }, true);
+  commit(syncScriptedProposal({ ...state, hireStep: state.hireStep - 1 }), true);
 }
 
 /** Convite de Lucas a Roberto. Só vale depois de combinarem o serviço na conversa e uma vez. */
@@ -262,6 +390,46 @@ export function publishCreatedJob(id: string): CreatedJob | null {
   commit({ ...state, createdJobs: state.createdJobs.map((job) => (job.id === id ? published : job)) }, false);
   return published;
 }
+
+// --- Propostas de valor (PRD 18.5) ---
+
+/** Propostas de uma conversa, da mais antiga para a mais nova. */
+export function proposalsOf(conversationId: string): DemoProposal[] {
+  return state.proposals.filter((proposal) => proposal.conversationId === conversationId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/** Nova proposta da pessoa da demonstração. A elegibilidade já foi conferida por quem chama. */
+export function createProposal(conversationId: string, amountCents: number): DemoProposal {
+  const proposal: DemoProposal = {
+    id: `demo-proposal-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    conversationId,
+    fromMe: true,
+    amountCents,
+    status: "PENDING",
+    createdAt: new Date().toISOString(),
+    decidedAt: null,
+  };
+  commit({ ...state, proposals: [...state.proposals, proposal].slice(-50) }, false);
+  return proposal;
+}
+
+/** Decide uma proposta pendente. Devolve `null` se ela não existe ou já foi decidida (nada muda). */
+export function decideProposal(id: string, status: Exclude<ProposalStatus, "PENDING">, refresh = false): DemoProposal | null {
+  const current = state.proposals.find((proposal) => proposal.id === id);
+  if (!current || current.status !== "PENDING") return null;
+  const decided: DemoProposal = { ...current, status, decidedAt: new Date().toISOString() };
+  commit(syncScriptedProposal({ ...state, proposals: state.proposals.map((proposal) => (proposal.id === id ? decided : proposal)) }), refresh);
+  return decided;
+}
+
+/** Controle da demonstração: a outra pessoa responde à proposta pendente da pessoa da demonstração. */
+export function simulateCounterpart(conversationId: string, status: "ACCEPTED" | "DECLINED"): boolean {
+  const pending = state.proposals.find((proposal) => proposal.conversationId === conversationId && proposal.fromMe && proposal.status === "PENDING");
+  return pending ? decideProposal(pending.id, status, true) !== null : false;
+}
+
+export const hasPendingOwnProposal = (s: DemoState, conversationId: string): boolean =>
+  s.proposals.some((proposal) => proposal.conversationId === conversationId && proposal.fromMe && proposal.status === "PENDING");
 
 export function addExtraInterest(jobId: string) {
   if (state.extraInterestJobIds.includes(jobId)) return;

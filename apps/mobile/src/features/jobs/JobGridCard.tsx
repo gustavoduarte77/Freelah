@@ -1,4 +1,4 @@
-import { formatJobDate, formatPriceCents, type JobSummary } from "@freelah/shared";
+import { formatJobDate, formatJobPrice, hasDefinedPrice, type JobSummary } from "@freelah/shared";
 import { useRouter } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 import { Icon } from "../../components/Icon";
@@ -7,6 +7,7 @@ import { colors, gradient, radius } from "../../theme";
 import { DemoBadge, StatusBadge } from "./components";
 import { JobArt } from "./JobArt";
 import { PhotoBadge } from "./PhotoBadge";
+import { PhotoPlaceholder } from "./PhotoPlaceholder";
 
 const CARD_HEIGHT = 380;
 const INFO_HEIGHT = 210;
@@ -24,7 +25,11 @@ export function JobGridCard({ job }: { job: JobSummary }) {
       onPress={() => router.push({ pathname: "/oportunidades/[id]", params: { id: job.id } })}
       style={styles.card}
     >
-      <JobArt categorySlug={job.category.slug} iconSize={72} style={styles.art} />
+      {(job.photoCount ?? 0) > 0 ? (
+        <PhotoPlaceholder iconSize={64} style={styles.art} testID="card-photo-placeholder" />
+      ) : (
+        <JobArt categorySlug={job.category.slug} iconSize={72} style={styles.art} />
+      )}
       <View style={styles.tags}>
         <View style={styles.categoryPill}>
           <Text style={styles.categoryText} numberOfLines={1}>
@@ -59,8 +64,8 @@ export function JobGridCard({ job }: { job: JobSummary }) {
           </Text>
         </View>
         <View style={styles.priceRow}>
-          <Text style={styles.price}>{formatPriceCents(job.proposedPriceCents)}</Text>
-          {job.negotiable ? <Text style={styles.negotiable}>negociável</Text> : null}
+          <Text style={styles.price}>{formatJobPrice(job.proposedPriceCents)}</Text>
+          {job.negotiable && hasDefinedPrice(job.proposedPriceCents) ? <Text style={styles.negotiable}>negociável</Text> : null}
         </View>
       </View>
     </InteractiveCard>

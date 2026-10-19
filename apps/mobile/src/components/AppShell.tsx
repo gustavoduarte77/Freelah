@@ -40,9 +40,14 @@ const HIDDEN_ON = ["/entrar", "/cadastrar"];
 
 type Interaction = { hovered?: boolean; focused?: boolean };
 
-// Perfil e configurações ainda não foram construídos: aparecem desabilitados e marcados "Em breve",
-// sem levar a páginas inexistentes. Navegação principal (oportunidades, interesses, mensagens) fica só na barra.
-const FUTURE_MENU = ["Meu perfil", "Editar perfil", "Configurações"];
+// Configurações ainda não foi construída: aparece desabilitada e marcada "Em breve", sem levar a página
+// inexistente. Navegação principal (oportunidades, interesses, mensagens) fica só na barra.
+const FUTURE_MENU = ["Configurações"];
+// Itens do menu da conta que já levam a uma tela.
+const ACCOUNT_LINKS: Array<{ label: string; href: Href }> = [
+  { label: "Meu perfil", href: "/meu-perfil" as Href },
+  { label: "Editar perfil", href: "/editar-perfil" as Href },
+];
 
 function isActive(pathname: string, match: string[]) {
   return match.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
@@ -206,6 +211,7 @@ function IconButton({
 }
 
 function AccountMenu({ name, email, compact }: { name: string; email: string; compact: boolean }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const initial = name.trim().charAt(0).toUpperCase() || "?";
@@ -252,6 +258,23 @@ function AccountMenu({ name, email, compact }: { name: string; email: string; co
             {email}
           </Text>
           <View style={styles.menuDivider} />
+          {ACCOUNT_LINKS.map((link) => (
+            <Pressable
+              key={link.label}
+              accessibilityRole="button"
+              onPress={() => {
+                setOpen(false);
+                router.push(link.href);
+              }}
+              style={({ hovered, focused }: Interaction) => [
+                styles.menuItem,
+                hovered ? styles.navLinkHover : null,
+                focused ? styles.focus : null,
+              ]}
+            >
+              <Text style={styles.menuItemText}>{link.label}</Text>
+            </Pressable>
+          ))}
           {FUTURE_MENU.map((label) => (
             <View
               key={label}

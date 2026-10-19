@@ -1,7 +1,8 @@
 import {
   workerInterestLabel,
   formatBrDate,
-  formatPriceCents,
+  formatJobPrice,
+  hasDefinedPrice,
   type MyInterest,
   type MyJobsApiError,
 } from "@freelah/shared";
@@ -199,8 +200,8 @@ function InterestCard({
       </View>
       <Text style={styles.jobTitle}>{job.title}</Text>
       <Text style={styles.meta}>
-        {formatPriceCents(job.proposedPriceCents)}
-        {job.negotiable ? " · negociável" : ""} · {job.city}/{job.state}
+        {formatJobPrice(job.proposedPriceCents)}
+        {job.negotiable && hasDefinedPrice(job.proposedPriceCents) ? " · negociável" : ""} · {job.city}/{job.state}
       </Text>
       <Text style={styles.meta}>
         Serviço em {formatBrDate(job.scheduledDate)} às {job.startTime} · contratante: {job.ownerName}

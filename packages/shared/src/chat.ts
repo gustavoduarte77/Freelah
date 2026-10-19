@@ -40,7 +40,7 @@ const conversationJobSchema = z.object({ id: z.string(), title: z.string(), stat
 
 /** Dados públicos do serviço, para o convite e a confirmação de contratação. */
 const conversationJobDetailSchema = conversationJobSchema.extend({
-  proposedPriceCents: z.number().int().nonnegative(),
+  proposedPriceCents: z.number().int().nonnegative().nullable(),
   scheduledDate: z.string(),
   startTime: z.string(),
   city: z.string(),

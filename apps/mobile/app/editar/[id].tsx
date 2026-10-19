@@ -7,6 +7,7 @@ import {
   formatBrDate,
   interpretCheckedEdit,
   mapServerFields,
+  priceStateOf,
   type JobFormErrors,
   type MyJobsApiError,
   type OwnJob,
@@ -333,6 +334,14 @@ function EditJob({ jobId, userId, scrollToY }: { jobId: string; userId: string; 
           )}
         </View>
       ) : null}
+      {priceStateOf(session.original.proposedPriceCents) === "TO_CONFIRM" ? (
+        <View style={styles.toConfirm} accessibilityRole="alert" testID="edit-price-to-confirm">
+          <Text style={styles.toConfirmText}>
+            O valor desta oportunidade precisa ser confirmado. Informe um valor maior que zero ou marque “A negociar”; nada é alterado
+            sozinho.
+          </Text>
+        </View>
+      ) : null}
       <PublishForm
         form={session.form}
         categories={categories.state.data}
@@ -358,6 +367,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { width: "100%", maxWidth: 1480, alignSelf: "center", padding: PAGE_PADDING, paddingBottom: 64, gap: 10 },
   card: { gap: 16 },
+  toConfirm: { backgroundColor: colors.warningSoft, borderRadius: 12, padding: 12 },
+  toConfirmText: { fontSize: 14, color: colors.warningText },
   title: { fontSize: 30, fontWeight: "800", color: colors.text },
   gap: { gap: 12 },
   text: { fontSize: 15, color: colors.text },

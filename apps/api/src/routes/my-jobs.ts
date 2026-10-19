@@ -6,9 +6,11 @@ import {
   canEditJob,
   canPublishJob,
   createJobSchema,
+  NO_PRICE_NEGOTIABLE_MESSAGE,
   jobFieldErrors,
   ownJobEffectiveStatus,
   updateJobSchema,
+  validateJobPriceForPublish,
   validateJobSchedule,
   type JobSchedule,
   type OwnJob,
@@ -263,6 +265,13 @@ export function createMyJobsRouter(
       }
       const patch = parsed.data;
 
+      // "A negociar" (sem valor) exige negociável: confere o resultado final, não só o que veio no corpo.
+      const nextPrice = patch.proposedPriceCents !== undefined ? patch.proposedPriceCents : row.proposedPriceCents;
+      if (nextPrice === null && !(patch.negotiable ?? row.negotiable)) {
+        sendValidation(res, { negotiable: NO_PRICE_NEGOTIABLE_MESSAGE });
+        return;
+      }
+
       // Só confere "no futuro / até 60 dias" quando a pessoa mexeu no calendário.
       const touchesCalendar =
         patch.scheduledDate !== undefined ||
@@ -350,6 +359,13 @@ export function createMyJobsRouter(
       }
       if (!(await categoryIsActive(row.category.id))) {
         sendValidation(res, { categoryId: INVALID_CATEGORY_MESSAGE });
+        return;
+      }
+      // Um rascunho antigo pode ter valor zero ou outro que a criação de hoje recusaria: o responsável
+      // precisa definir um valor válido ou marcar "A negociar" antes de publicar.
+      const priceErrors = validateJobPriceForPublish(row.proposedPriceCents, row.negotiable);
+      if (Object.keys(priceErrors).length > 0) {
+        sendValidation(res, priceErrors);
         return;
       }
 

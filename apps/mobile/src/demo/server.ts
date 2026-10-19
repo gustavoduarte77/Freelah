@@ -1,18 +1,28 @@
 import {
   JOB_VALIDATION_MESSAGE,
   createJobSchema,
+  createProposalSchema,
+  updateProfileSchema,
   describeJobAvailability,
   jobFieldErrors,
   makeExcerpt,
+  negotiationClosedReason,
+  proposalActions,
+  proposalEligibility,
+  PROPOSAL_NOT_PENDING_MESSAGE,
   validateJobImages,
+  validateJobPriceForPublish,
   validateJobSchedule,
   type InviteState,
+  type NegotiationContext,
+  type Proposal,
   type InterestStatus,
   type PublicJobStatus,
 } from "@freelah/shared";
 import {
   CATEGORIES,
   DEMO_EMAIL,
+  DEMO_OWN_PROFILE_ID,
   DEMO_PASSWORD,
   DEMO_USER,
   HIRE_CONVERSATION_ID,
@@ -30,6 +40,7 @@ import {
   PROFILES,
   SCRIPT_CONVERSATION_ID,
   SCRIPT_INTEREST_CREATED_AT,
+  STATIC_CONVERSATIONS,
   SCRIPT_JOB_ID,
   SCRIPT_MESSAGES,
   SCRIPT_OTHER_NAME,
@@ -40,14 +51,19 @@ import { getJobImages } from "./images";
 import {
   addExtraInterest,
   createJob,
+  createProposal,
+  decideProposal,
   getState,
   inviteHire,
   isHireAccepted,
   publishCreatedJob,
+  proposalsOf,
   respondToInvite,
+  saveProfile,
   setLoggedIn,
   withdrawInterest,
   type CreatedJob,
+  type DemoProposal,
 } from "./store";
 import { publishPhotos } from "../features/publish/photos";
 
@@ -169,11 +185,27 @@ function hireConversation() {
   };
 }
 
-/** Perfil público com o resumo das avaliações calculado a partir delas. */
+/**
+ * Perfil público com o resumo das avaliações calculado a partir delas. O da própria conta de
+ * demonstração recebe a edição salva (papéis, ocupação, apresentação e cidade); os demais nunca mudam.
+ */
 function publicProfile(profile: (typeof PROFILES)[number]) {
-  const count = profile.reviews.length;
-  const average = count > 0 ? profile.reviews.reduce((sum, review) => sum + review.rating, 0) / count : 0;
-  return { ...profile, rating: count > 0 ? { average, count } : null };
+  const edited = profile.id === DEMO_OWN_PROFILE_ID ? getState().profile : null;
+  const merged = edited ? { ...profile, roles: edited.roles, headline: edited.headline, bio: edited.bio, city: edited.city } : profile;
+  const count = merged.reviews.length;
+  const average = count > 0 ? merged.reviews.reduce((sum, review) => sum + review.rating, 0) / count : 0;
+  return { ...merged, rating: count > 0 ? { average, count } : null };
+}
+
+const ownProfile = () => publicProfile(PROFILES.find((profile) => profile.id === DEMO_OWN_PROFILE_ID)!);
+
+function updateOwnProfile(bodyText: string | undefined): DemoResponse {
+  const parsed = updateProfileSchema.safeParse(parseBody(bodyText));
+  if (!parsed.success) {
+    return { status: 400, body: { error: "validation_error", message: "Confira os campos destacados e tente de novo.", fields: jobFieldErrors(parsed.error) } };
+  }
+  saveProfile(parsed.data);
+  return ok({ profile: ownProfile() });
 }
 
 interface InterestRow {
@@ -333,6 +365,29 @@ function conversation() {
   };
 }
 
+/** Conversa de exemplo (mensagens fixas): Lucas é o profissional interessado e não há convite. */
+function exampleConversation(example: (typeof STATIC_CONVERSATIONS)[number]) {
+  const job = JOB_BY_ID.get(example.jobId)!;
+  return {
+    id: example.id,
+    job: {
+      id: job.id,
+      title: job.title,
+      status: jobStatus(job),
+      proposedPriceCents: job.proposedPriceCents,
+      scheduledDate: job.scheduledDate,
+      startTime: job.startTime,
+      city: job.city,
+      state: job.state,
+    },
+    viewerIsOwner: false,
+    interest: { id: example.interestId, status: "PENDING" as InterestStatus, invite: "NONE" as InviteState },
+    other: { name: example.otherName, profileId: example.otherProfileId },
+    canSend: false,
+    blockedReason: "Esta é uma conversa de exemplo da demonstração: as mensagens são fixas e não podem ser enviadas.",
+  };
+}
+
 // --- Roteamento ---------------------------------------------------------------
 
 function matchesQuery(job: DemoJob, params: URLSearchParams): boolean {
@@ -344,9 +399,11 @@ function matchesQuery(job: DemoJob, params: URLSearchParams): boolean {
   const city = params.get("city")?.trim();
   if (city && !fold(job.city).includes(fold(city))) return false;
   const min = params.get("minPriceCents");
-  if (min && job.proposedPriceCents < Number(min)) return false;
+  // Sem valor positivo ("A negociar" ou zero antigo) não dá para comparar: com filtro de valor ativo, fica de fora (como na API).
+  if ((min || params.get("maxPriceCents")) && !(typeof job.proposedPriceCents === "number" && job.proposedPriceCents > 0)) return false;
+  if (min && (job.proposedPriceCents as number) < Number(min)) return false;
   const max = params.get("maxPriceCents");
-  if (max && job.proposedPriceCents > Number(max)) return false;
+  if (max && (job.proposedPriceCents as number) > Number(max)) return false;
   return true;
 }
 
@@ -395,6 +452,96 @@ function session() {
   };
 }
 
+// --- Propostas de valor (PRD 18.5) -----------------------------------------------
+
+/**
+ * Situação da negociação de uma conversa do roteiro, com as mesmas regras da API. O bloqueio do
+ * roteiro (`canSend: false`) só impede mensagens livres: não conta como conversa fechada.
+ */
+function negotiationOf(conversationId: string): { context: NegotiationContext; otherName: string } | null {
+  if (conversationId === HIRE_CONVERSATION_ID) {
+    const job = JOB_BY_ID.get(HIRE_JOB_ID)!;
+    return {
+      context: { jobStatus: jobStatus(job), interestStatus: hireInterest().status, negotiable: job.negotiable, conversationBlockedReason: null },
+      otherName: HIRE_OTHER_NAME,
+    };
+  }
+  const example = STATIC_CONVERSATIONS.find((item) => item.id === conversationId);
+  if (example) {
+    const job = JOB_BY_ID.get(example.jobId)!;
+    return {
+      context: { jobStatus: jobStatus(job), interestStatus: "PENDING", negotiable: job.negotiable, conversationBlockedReason: null },
+      otherName: example.otherName,
+    };
+  }
+  if (conversationId === SCRIPT_CONVERSATION_ID) {
+    const job = scriptJob();
+    return {
+      context: { jobStatus: jobStatus(job), interestStatus: scriptInterestStatus(), negotiable: job.negotiable, conversationBlockedReason: null },
+      otherName: SCRIPT_OTHER_NAME,
+    };
+  }
+  return null;
+}
+
+function toProposal(proposal: DemoProposal, context: NegotiationContext, otherName: string): Proposal {
+  const closedReason = proposal.status === "PENDING" ? negotiationClosedReason(context) : null;
+  return {
+    id: proposal.id,
+    conversationId: proposal.conversationId,
+    amountCents: proposal.amountCents,
+    status: proposal.status,
+    fromMe: proposal.fromMe,
+    authorName: proposal.fromMe ? DEMO_USER.name : otherName,
+    createdAt: proposal.createdAt,
+    decidedAt: proposal.decidedAt,
+    ...proposalActions(proposal.status, proposal.fromMe, closedReason),
+    closedReason,
+  };
+}
+
+function proposalsOfConversation(conversationId: string): DemoResponse {
+  const negotiation = negotiationOf(conversationId);
+  if (!negotiation) return notFound();
+  const stored = proposalsOf(conversationId);
+  const { canPropose, reason } = proposalEligibility(negotiation.context, stored);
+  return ok({
+    proposals: stored.map((proposal) => toProposal(proposal, negotiation.context, negotiation.otherName)),
+    canPropose,
+    proposeBlockedReason: reason,
+  });
+}
+
+function sendProposal(conversationId: string, bodyText: string | undefined): DemoResponse {
+  const negotiation = negotiationOf(conversationId);
+  if (!negotiation) return notFound();
+  const parsed = createProposalSchema.safeParse(parseBody(bodyText));
+  if (!parsed.success) {
+    return { status: 400, body: { error: "validation_error", message: "Confira o valor da proposta e tente de novo.", fields: jobFieldErrors(parsed.error) } };
+  }
+  const { canPropose, reason } = proposalEligibility(negotiation.context, proposalsOf(conversationId));
+  if (!canPropose) return fail(409, "proposal_not_allowed", reason ?? "Não é possível enviar uma proposta agora.");
+  const created = createProposal(conversationId, parsed.data.amountCents);
+  return { status: 201, body: { proposal: toProposal(created, negotiation.context, negotiation.otherName) } };
+}
+
+function decideOwnProposal(id: string, action: string): DemoResponse {
+  const stored = getState().proposals.find((proposal) => proposal.id === id);
+  const negotiation = stored ? negotiationOf(stored.conversationId) : null;
+  if (!stored || !negotiation) return notFound();
+  const responding = action === "accept" || action === "decline";
+  if (!responding && action !== "withdraw") return notFound();
+  if (responding && stored.fromMe) return fail(403, "forbidden", "Só a outra pessoa da conversa pode responder à proposta.");
+  if (!responding && !stored.fromMe) return fail(403, "forbidden", "Só quem enviou a proposta pode retirá-la.");
+  if (stored.status !== "PENDING") return fail(409, "proposal_not_pending", PROPOSAL_NOT_PENDING_MESSAGE);
+  const closed = negotiationClosedReason(negotiation.context);
+  if (closed) return fail(409, "negotiation_closed", closed);
+  const status = action === "accept" ? "ACCEPTED" : action === "decline" ? "DECLINED" : "WITHDRAWN";
+  const decided = decideProposal(id, status);
+  if (!decided) return fail(409, "proposal_not_pending", PROPOSAL_NOT_PENDING_MESSAGE);
+  return ok({ proposal: toProposal(decided, negotiation.context, negotiation.otherName) });
+}
+
 const validation = (fields: Record<string, string>): DemoResponse => ({
   status: 400,
   body: { error: "validation_error", message: JOB_VALIDATION_MESSAGE, fields },
@@ -437,6 +584,11 @@ function createOwnJob(bodyText: string | undefined): DemoResponse {
 
 /** POST /me/jobs/:id/publish: só rascunhos criados na apresentação podem ser publicados. */
 function publishOwnJob(job: DemoJob): DemoResponse {
+  // Como na API: um rascunho antigo com zero (ou valor inválido) só publica depois de regularizado.
+  if (job.draft) {
+    const priceErrors = validateJobPriceForPublish(job.proposedPriceCents, job.negotiable);
+    if (Object.keys(priceErrors).length > 0) return validation(priceErrors);
+  }
   const published = job.draft ? publishCreatedJob(job.id) : null;
   if (!published) return fail(409, "invalid_state", "Só é possível publicar um rascunho.");
   return ok({ job: ownJob(createdAsDemoJob(published)) });
@@ -515,9 +667,16 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
   if (path === "/me" && method === "GET") {
     return ok({ ...DEMO_USER, avatarUrl: null, createdAt: BOOT });
   }
+  if (path === "/me/profile") {
+    if (method === "GET") return ok({ profile: ownProfile() });
+    if (method === "PATCH") return updateOwnProfile(bodyText);
+    return notAvailable();
+  }
   if (path === "/me/preferences") {
     if (method === "PUT") return ok({ preferences: { wantsWork: true, wantsToHire: true, ...parseBody(bodyText) } });
-    return ok({ preferences: { wantsWork: true, wantsToHire: true } });
+    // Os papéis do perfil são as mesmas preferências de uso.
+    const roles = getState().profile?.roles;
+    return ok({ preferences: { wantsWork: roles ? roles.includes("PROFESSIONAL") : true, wantsToHire: roles ? roles.includes("CLIENT") : true } });
   }
 
   // --- Minhas oportunidades ---
@@ -571,6 +730,8 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
     if (!row) return notFound();
     const isScript = row.jobId === SCRIPT_JOB_ID;
     if (action === "conversation" && method === "POST") {
+      const example = STATIC_CONVERSATIONS.find((item) => item.interestId === row.id);
+      if (example) return ok({ conversation: { id: example.id } });
       return isScript ? ok({ conversation: { id: SCRIPT_CONVERSATION_ID } }) : fail(409, "demo_readonly", "Nesta demonstração só a conversa da pintura está disponível.");
     }
     if (action === "withdraw" && method === "POST") {
@@ -587,6 +748,16 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
       return ok({ interest: { id: scriptInterestId(), status: "PENDING", invite: "DECLINED" } });
     }
     return notAvailable();
+  }
+
+  // --- Propostas de valor ---
+  if (segments[0] === "me" && segments[1] === "proposals" && segments.length === 4 && method === "POST") {
+    return decideOwnProposal(decodeURIComponent(segments[2]!), segments[3]!);
+  }
+  if (segments[0] === "me" && segments[1] === "conversations" && segments[3] === "proposals" && segments.length === 4) {
+    const conversationId = decodeURIComponent(segments[2] ?? "");
+    if (method === "GET") return proposalsOfConversation(conversationId);
+    if (method === "POST") return sendProposal(conversationId, bodyText);
   }
 
   // --- Mensagens ---
@@ -611,6 +782,17 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
             interestStatus: hireInterest().status,
             lastMessage: hireLast ? { content: hireLast.content, createdAt: hireLast.createdAt, fromMe: hireLast.fromMe } : null,
           },
+          ...STATIC_CONVERSATIONS.map((example) => {
+            const exampleJob = JOB_BY_ID.get(example.jobId)!;
+            const lastExample = example.messages.at(-1)!;
+            return {
+              id: example.id,
+              job: { id: exampleJob.id, title: exampleJob.title, status: jobStatus(exampleJob) },
+              other: { name: example.otherName, profileId: example.otherProfileId },
+              interestStatus: "PENDING" as InterestStatus,
+              lastMessage: { content: lastExample.content, createdAt: lastExample.createdAt, fromMe: lastExample.fromMe },
+            };
+          }),
         ],
       });
     }
@@ -621,6 +803,16 @@ export function handleDemoRequest(method: string, rawPath: string, bodyText?: st
         const after = url.searchParams.get("after");
         const index = after ? all.findIndex((message) => message.id === after) : -1;
         return ok({ messages: all.slice(index + 1), cursor: all.at(-1)?.id ?? null });
+      }
+      return notAvailable();
+    }
+    const example = STATIC_CONVERSATIONS.find((item) => item.id === decodeURIComponent(segments[2] ?? ""));
+    if (example) {
+      if (segments.length === 3 && method === "GET") return ok({ conversation: exampleConversation(example) });
+      if (segments[3] === "messages" && method === "GET") {
+        const after = url.searchParams.get("after");
+        const index = after ? example.messages.findIndex((message) => message.id === after) : -1;
+        return ok({ messages: example.messages.slice(index + 1), cursor: example.messages.at(-1)?.id ?? null });
       }
       return notAvailable();
     }

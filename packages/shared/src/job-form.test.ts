@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { OwnJob } from "./jobs-write";
+import { JOB_PRICE_MAX_CENTS, type OwnJob } from "./jobs-write";
 import {
   DATE_FORMAT_MESSAGE,
   PRICE_FORMAT_MESSAGE,
   PRICE_REQUIRED_MESSAGE,
+  PRICE_ZERO_MESSAGE,
+  centsToPriceInput,
+  maskPriceInput,
+  parsePriceInput,
   TIME_FORMAT_MESSAGE,
   buildCreateJobRequest,
   buildUpdateJobRequest,
@@ -39,6 +43,7 @@ const valid: JobFormValues = {
   startTime: "08:00",
   price: "200",
   negotiable: true,
+  toNegotiate: false,
   deadlineDate: "19/10/2026",
 };
 
@@ -212,10 +217,18 @@ describe("buildCreateJobRequest", () => {
     expect(result.service.toISOString()).toBe("2026-10-20T11:00:00.000Z");
   });
 
-  it("aceita os formatos de valor da exploração e o valor zero", () => {
-    for (const [price, cents] of [["200", 20000], ["200,00", 20000], ["R$ 200", 20000], ["1234,56", 123456], ["0", 0], ["10.5", 1050]] as const) {
+  it("aceita os formatos de valor digitados à mão e o da máscara", () => {
+    for (const [price, cents] of [["200", 20000], ["200,00", 20000], ["R$ 200", 20000], ["1234,56", 123456], ["10.5", 1050], ["1.234,56", 123456], ["999.999,99", 99_999_999]] as const) {
       const result = buildCreateJobRequest({ ...valid, price }, NOW);
       expect(result.ok && result.request.proposedPriceCents, price).toBe(cents);
+    }
+  });
+
+  it("valor zero não é um preço: pede um valor maior que zero", () => {
+    for (const price of ["0", "0,00", "R$ 0,00"]) {
+      const result = buildCreateJobRequest({ ...valid, price }, NOW);
+      if (result.ok) throw new Error(`esperava erro para ${price}`);
+      expect(result.errors.price, price).toBe(PRICE_ZERO_MESSAGE);
     }
   });
 
@@ -301,7 +314,8 @@ describe("mapServerFields e firstErrorField", () => {
   });
 
   it("campos que não existem no formulário vão para a mensagem geral", () => {
-    expect(mapServerFields({ negotiable: "x", publish: "y" })).toEqual({ _: "x" });
+    // "Sem valor e valor fixo" é corrigido no campo de valor; o resto vai para a mensagem geral
+    expect(mapServerFields({ negotiable: "x", publish: "y" })).toEqual({ price: "x", _: "y" });
   });
 
   it("firstErrorField segue a ordem do formulário", () => {
@@ -349,12 +363,114 @@ describe("centsToReaisInput", () => {
     expect(centsToReaisInput(20000)).toBe("200,00");
     expect(centsToReaisInput(5)).toBe("0,05");
     expect(centsToReaisInput(123456)).toBe("1234,56");
-    for (const cents of [0, 5, 99, 100, 20000, 123456, 9_999_999]) {
+    for (const cents of [5, 99, 100, 20000, 123456, 9_999_999]) {
       const text = centsToReaisInput(cents);
       const result = buildCreateJobRequest({ ...valid, price: text }, NOW);
       expect(result.ok, text).toBe(true);
       if (result.ok) expect(result.request.proposedPriceCents).toBe(cents);
     }
+  });
+});
+
+describe("A negociar no formulário", () => {
+  it("envia valor null e negociável verdadeiro, sem exigir o campo de valor", () => {
+    for (const price of ["", "abc", "0", "200"]) {
+      const result = buildCreateJobRequest({ ...valid, price, negotiable: false, toNegotiate: true }, NOW);
+      expect(result.ok, price).toBe(true);
+      if (result.ok) {
+        expect(result.request.proposedPriceCents, price).toBeNull();
+        expect(result.request.negotiable, price).toBe(true);
+      }
+    }
+  });
+
+  it("desligado, o valor volta a ser obrigatório e maior que zero", () => {
+    const empty = buildCreateJobRequest({ ...valid, price: "", toNegotiate: false }, NOW);
+    if (empty.ok) throw new Error("esperava erro");
+    expect(empty.errors.price).toBe(PRICE_REQUIRED_MESSAGE);
+    const zero = buildCreateJobRequest({ ...valid, price: "0,00", toNegotiate: false }, NOW);
+    if (zero.ok) throw new Error("esperava erro");
+    expect(zero.errors.price).toBe(PRICE_ZERO_MESSAGE);
+  });
+
+  it("nunca monta um corpo com valor zero nem com 'A negociar' e valor numérico", () => {
+    for (const toNegotiate of [true, false]) {
+      for (const price of ["", "0", "0,00", "150,00"]) {
+        const result = buildCreateJobRequest({ ...valid, price, toNegotiate }, NOW);
+        if (!result.ok) continue;
+        const cents = result.request.proposedPriceCents;
+        expect(cents === null || cents > 0, `${toNegotiate}/${price}`).toBe(true);
+        if (toNegotiate) expect(cents).toBeNull();
+      }
+    }
+  });
+
+  it("edição: marcar 'A negociar' envia valor null e negociável; desmarcar exige um valor", () => {
+    const fixed = { ...OWN, negotiable: false } as OwnJob;
+    const toNull = buildUpdateJobRequest({ ...jobToFormValues(fixed), toNegotiate: true }, fixed, NOW);
+    expect(toNull).toMatchObject({ ok: true, changes: { proposedPriceCents: null, negotiable: true } });
+    // já negociável: só o valor muda
+    const already = buildUpdateJobRequest({ ...jobToFormValues(OWN), toNegotiate: true }, OWN, NOW);
+    expect(already).toMatchObject({ ok: true, changes: { proposedPriceCents: null } });
+    const negotiableOwn = { ...OWN, proposedPriceCents: null, negotiable: true } as OwnJob;
+    const unchanged = buildUpdateJobRequest(jobToFormValues(negotiableOwn), negotiableOwn, NOW);
+    expect(unchanged).toMatchObject({ ok: true, changes: {} });
+    const off = buildUpdateJobRequest({ ...jobToFormValues(negotiableOwn), toNegotiate: false }, negotiableOwn, NOW);
+    if (off.ok) throw new Error("esperava erro");
+    expect(off.errors.price).toBe(PRICE_REQUIRED_MESSAGE);
+    const priced = buildUpdateJobRequest({ ...jobToFormValues(negotiableOwn), toNegotiate: false, price: "300,00" }, negotiableOwn, NOW);
+    expect(priced).toMatchObject({ ok: true, changes: { proposedPriceCents: 30000 } });
+  });
+});
+
+describe("máscara de valor", () => {
+  it("os dígitos entram à direita, em centavos", () => {
+    expect(["2", "20", "200", "2000", "20000"].map((d) => maskPriceInput(d))).toEqual(["0,02", "0,20", "2,00", "20,00", "200,00"]);
+    expect(maskPriceInput("123456")).toBe("1.234,56");
+    expect(maskPriceInput("99999999")).toBe("999.999,99");
+  });
+
+  it("sem dígitos, ou só zeros, é sem preço (campo vazio)", () => {
+    expect(maskPriceInput("")).toBe("");
+    expect(maskPriceInput("0")).toBe("");
+    expect(maskPriceInput("0,00")).toBe("");
+    expect(maskPriceInput("abc")).toBe("");
+  });
+
+  it("ignora o que não é dígito, inclusive ao colar, e respeita o teto da API", () => {
+    expect(maskPriceInput("R$ 1.234,56 reais")).toBe("1.234,56");
+    expect(maskPriceInput("-5")).toBe("0,05");
+    expect(maskPriceInput("999.999,999")).toBe("999.999,99");
+    expect(parsePriceInput(maskPriceInput("9".repeat(30)))).toBe(JOB_PRICE_MAX_CENTS);
+  });
+
+  it("é idempotente (reaplicar a máscara não muda o texto)", () => {
+    for (const text of ["", "0,02", "2,00", "1.234,56", "999.999,99"]) expect(maskPriceInput(text)).toBe(text);
+  });
+
+  it("converte o texto da máscara em centavos e volta (edição), sem aceitar zero como preço", () => {
+    for (const cents of [1, 5, 99, 100, 20000, 123456, 99_999_999]) {
+      const text = centsToPriceInput(cents);
+      expect(parsePriceInput(text), text).toBe(cents);
+      expect(maskPriceInput(text)).toBe(text);
+    }
+    expect(centsToPriceInput(0)).toBe("");
+    expect(centsToPriceInput(-3)).toBe("");
+  });
+
+  it("nunca produz um valor que a API recuse", () => {
+    for (const raw of ["1", "99999999", "999999999999", "5".repeat(40)]) {
+      const cents = parsePriceInput(maskPriceInput(raw));
+      expect(cents).not.toBeNull();
+      expect(cents!).toBeGreaterThan(0);
+      expect(cents!).toBeLessThanOrEqual(JOB_PRICE_MAX_CENTS);
+    }
+  });
+
+  it("o formulário continua pedindo o valor quando o campo está vazio", () => {
+    const result = buildCreateJobRequest({ ...valid, price: maskPriceInput("") }, NOW);
+    if (result.ok) throw new Error("esperava erro");
+    expect(result.errors.price).toBe(PRICE_REQUIRED_MESSAGE);
   });
 });
 
@@ -371,8 +487,22 @@ describe("jobToFormValues", () => {
       startTime: "08:00",
       price: "200,00",
       negotiable: true,
+      toNegotiate: false,
       deadlineDate: "19/10/2026",
     });
+  });
+
+  it("oportunidade sem valor abre com 'A negociar' ligado e o campo de valor vazio", () => {
+    const values = jobToFormValues({ ...OWN, proposedPriceCents: null, negotiable: true });
+    expect(values).toMatchObject({ price: "", toNegotiate: true, negotiable: true });
+  });
+
+  it("dado antigo com valor zero não vira 'A negociar' sozinho: o campo fica vazio e pede um valor", () => {
+    const values = jobToFormValues({ ...OWN, proposedPriceCents: 0 });
+    expect(values).toMatchObject({ price: "", toNegotiate: false });
+    const built = buildCreateJobRequest(values, NOW);
+    if (built.ok) throw new Error("esperava erro");
+    expect(built.errors.price).toBe(PRICE_REQUIRED_MESSAGE);
   });
 
   it("informações adicionais existentes aparecem no campo", () => {

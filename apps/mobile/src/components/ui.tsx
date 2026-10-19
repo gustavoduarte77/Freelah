@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from "react";
+import { useState, type ReactNode, type Ref } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { colors, radius, shadow } from "../theme";
+import { colors, focusRing, noInnerOutline, radius, shadow } from "../theme";
 import { InfoTip } from "./InfoTip";
 
 // Os tokens vivem em src/theme; este reexport mantém os imports antigos funcionando.
@@ -37,29 +37,62 @@ export function FormScreen({ children }: { children: ReactNode }) {
   );
 }
 
-interface TextFieldProps extends TextInputProps {
+export interface TextFieldProps extends TextInputProps {
   label: string;
   error?: string | undefined;
   /** Explicação curta, mostrada num balão ao lado do rótulo. */
   help?: string;
   /** Referência do campo, para o formulário levar o foco ao próximo. */
   inputRef?: Ref<TextInput>;
+  /** Texto fixo à esquerda, dentro da caixa (ex.: "R$"). Não faz parte do valor digitado. */
+  prefix?: string;
 }
 
-export function TextField({ label, error, help, inputRef, style, ...input }: TextFieldProps) {
+export function TextField({ label, error, help, inputRef, prefix, style, ...input }: TextFieldProps) {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={styles.field}>
       <View style={styles.labelRow}>
         <Text style={styles.label}>{label}</Text>
         {help ? <InfoTip text={help} label={label} /> : null}
       </View>
-      <TextInput
-        ref={inputRef}
-        accessibilityLabel={label}
-        placeholderTextColor={colors.muted}
-        style={[styles.input, error ? styles.inputError : null, style]}
-        {...input}
-      />
+      {prefix ? (
+        <View
+          style={[
+            styles.input,
+            styles.prefixBox,
+            error ? styles.inputError : null,
+            focused ? focusRing : null,
+          ]}
+        >
+          <Text style={styles.prefix} accessibilityElementsHidden importantForAccessibility="no">
+            {prefix}
+          </Text>
+          <TextInput
+            ref={inputRef}
+            accessibilityLabel={label}
+            placeholderTextColor={colors.muted}
+            style={[styles.prefixInput, noInnerOutline, style]}
+            {...input}
+            onFocus={(event) => {
+              setFocused(true);
+              input.onFocus?.(event);
+            }}
+            onBlur={(event) => {
+              setFocused(false);
+              input.onBlur?.(event);
+            }}
+          />
+        </View>
+      ) : (
+        <TextInput
+          ref={inputRef}
+          accessibilityLabel={label}
+          placeholderTextColor={colors.muted}
+          style={[styles.input, error ? styles.inputError : null, style]}
+          {...input}
+        />
+      )}
       {error ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
           {error}
@@ -147,6 +180,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   inputError: { borderColor: colors.error },
+  prefixBox: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 0 },
+  prefix: { fontSize: 16, fontWeight: "700", color: colors.muted },
+  prefixInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: colors.text, minWidth: 0 },
   error: { fontSize: 13, color: colors.error },
   button: {
     backgroundColor: colors.brand,

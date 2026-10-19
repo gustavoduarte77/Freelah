@@ -5,6 +5,11 @@ import {
   describeJobAvailability,
   effectiveJobStatus,
   formatJobDate,
+  NEGOTIABLE_PRICE_LABEL,
+  PRICE_TO_CONFIRM_LABEL,
+  describePriceTerms,
+  priceStateOf,
+  formatJobPrice,
   formatPriceCents,
   jobDetailSchema,
   jobsQuerySchema,
@@ -268,5 +273,49 @@ describe("validatePriceRange", () => {
     const result = validatePriceRange("abc", "xyz");
     expect(result.minPriceCents).toBeUndefined();
     expect(result.maxPriceCents).toBeUndefined();
+  });
+});
+
+
+describe("formatJobPrice e describePriceTerms", () => {
+  it("mostra o valor quando há preço", () => {
+    expect(formatJobPrice(15000)).toBe("R$ 150,00");
+    expect(formatJobPrice(123456)).toBe("R$ 1.234,56");
+  });
+
+  it("sem preço (null/undefined) mostra 'A negociar', nunca R$ 0,00, null ou undefined", () => {
+    for (const value of [null, undefined]) {
+      const text = formatJobPrice(value);
+      expect(text).toBe(NEGOTIABLE_PRICE_LABEL);
+      expect(text).toBe("A negociar");
+      expect(text).not.toMatch(/0,00|null|undefined/);
+    }
+  });
+
+  it("dado antigo com zero (ou inválido) mostra 'Valor a confirmar', e NÃO 'A negociar' nem R$ 0,00", () => {
+    for (const value of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const text = formatJobPrice(value);
+      expect(text).toBe(PRICE_TO_CONFIRM_LABEL);
+      expect(text).toBe("Valor a confirmar");
+      expect(text).not.toMatch(/0,00|A negociar|null|undefined/);
+    }
+  });
+
+  it("distingue os três estados do valor, sem converter um no outro", () => {
+    expect(priceStateOf(15000)).toBe("DEFINED");
+    expect(priceStateOf(1)).toBe("DEFINED");
+    expect(priceStateOf(null)).toBe("NEGOTIABLE");
+    expect(priceStateOf(undefined)).toBe("NEGOTIABLE");
+    expect(priceStateOf(0)).toBe("TO_CONFIRM");
+    expect(priceStateOf(-1)).toBe("TO_CONFIRM");
+    expect(priceStateOf(Number.NaN)).toBe("TO_CONFIRM");
+  });
+
+  it("a legenda só existe para quem tem preço", () => {
+    expect(describePriceTerms(15000, true)).toBe("Valor negociável");
+    expect(describePriceTerms(15000, false)).toBe("Valor fixo");
+    expect(describePriceTerms(null, true)).toBeNull();
+    expect(describePriceTerms(0, false)).toBeNull();
+    expect(describePriceTerms(0, true)).toBeNull();
   });
 });

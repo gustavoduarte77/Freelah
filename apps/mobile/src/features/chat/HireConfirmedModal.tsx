@@ -1,4 +1,4 @@
-import { formatBrDate, formatPriceCents, type Conversation } from "@freelah/shared";
+import { formatBrDate, formatJobPrice, type Conversation } from "@freelah/shared";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../../components/Icon";
 import { Button, colors } from "../../components/ui";
@@ -55,7 +55,7 @@ export function HireConfirmedModal({
           </Text>
           <View style={styles.details}>
             <Row label="Oportunidade" value={job.title} />
-            <Row label="Valor" value={formatPriceCents(job.proposedPriceCents)} />
+            <Row label="Valor" value={formatJobPrice(job.proposedPriceCents)} />
             <Row label="Data" value={formatBrDate(job.scheduledDate)} />
             <Row label="Horário" value={job.startTime} />
             <Row label="Local" value={`${job.city}/${job.state}`} />

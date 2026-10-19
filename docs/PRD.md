@@ -491,6 +491,11 @@ Oportunidades recentes
 3. Construção Civil.
 4. Serviços de Manutenção.
 5. Aulas Particulares.
+6. Tecnologia e Suporte (exemplos: formatação de notebook, configuração de Wi-Fi, instalação de câmeras).
+7. Sites e Aplicativos (exemplos: criação de site para loja, ajuste de página, automação de planilha).
+8. Design e Criação Digital (exemplos: criação de logotipo, posts para redes sociais, edição de vídeo).
+
+*Decisão registrada: as categorias 6 a 8 passaram a fazer parte do MVP, como acréscimo às cinco originais, para que o Freelah não fique restrito a serviços manuais. As antigas "Tecnologia" e "Design" da lista de futuras foram incorporadas a elas.*
 
 ## 12.2 Categorias futuras
 
@@ -499,10 +504,8 @@ Oportunidades recentes
 - Pets.
 - Transporte.
 - Eventos.
-- Tecnologia.
 - Jardinagem.
 - Fotografia.
-- Design.
 - Outras.
 
 ## 12.3 Requisitos
@@ -771,7 +774,25 @@ A comunicação poderá utilizar atualização em tempo real ou consulta periód
 
 O mecanismo escolhido deverá funcionar de maneira consistente nas plataformas previstas.
 
-## 18.5 Futuro
+## 18.5 Proposta de valor no chat
+
+*Decisão registrada: a proposta de valor passou a fazer parte do MVP. O envio estruturado de propostas deixou de constar do que ficava fora do escopo.*
+
+A negociação continua acontecendo no chat. Além das mensagens de texto, as pessoas da conversa poderão **formalizar uma proposta de valor**, apresentada como um elemento próprio, distinto das mensagens comuns.
+
+Regras:
+
+- Cada conversa é uma negociação independente. Conversas diferentes, inclusive sobre a mesma oportunidade, podem chegar a valores diferentes.
+- A proposta contém somente um valor em reais (guardado em centavos, maior que zero e dentro do limite do produto). Não há campo de observação nesta versão.
+- Qualquer participante pode propor um valor, desde que a conversa esteja ativa, a oportunidade ainda não esteja contratada, concluída, cancelada ou expirada, e a oportunidade seja **negociável** (inclui as marcadas como "A negociar"). Oportunidades de valor fixo não oferecem o recurso.
+- Somente a outra pessoa da conversa pode aceitar ou recusar; somente o autor pode retirar a própria proposta pendente.
+- Uma conversa tem no máximo uma proposta pendente por vez. Depois de uma recusa ou retirada, uma nova proposta pode ser enviada.
+- Depois de uma proposta aceita, o acordo é final naquela conversa nesta versão: não há nova proposta.
+- As propostas e as decisões permanecem no histórico da conversa e só são visíveis para as duas pessoas.
+- **Aceitar uma proposta não altera o valor publicado da oportunidade e não conclui a contratação.** A contratação continua separada (seção 19) e não depende de uma proposta aceita.
+- Fora do escopo desta versão: contrapropostas encadeadas, observações na proposta, notificações push e qualquer pagamento. A atualização usa a mesma consulta periódica do chat.
+
+## 18.6 Futuro
 
 Ficam fora do MVP inicial:
 
@@ -779,7 +800,7 @@ Ficam fora do MVP inicial:
 - arquivos;
 - mensagens de voz;
 - localização;
-- envio estruturado de propostas;
+- contrapropostas encadeadas e propostas com condições detalhadas;
 - confirmação de pagamento;
 - moderação automatizada avançada.
 
@@ -839,7 +860,9 @@ O valor final poderá ser acordado entre as partes.
 
 ## MVP
 
-A negociação será conduzida pelo chat.
+A negociação será conduzida pelo chat, com a possibilidade de formalizar uma proposta de valor entre as duas pessoas da conversa (seção 18.5). O valor publicado da oportunidade só muda quando o responsável o edita.
+
+Uma oportunidade tem um valor definido (maior que zero), pode estar marcada como "A negociar" (sem valor definido) ou, em registros antigos, aparecer como "Valor a confirmar" até o responsável regularizá-la.
 
 O Freelah não processará pagamentos no MVP.
 
@@ -866,7 +889,21 @@ Cada usuário autenticado deverá possuir um perfil básico.
 - telefone;
 - cidade ou localização básica;
 - foto de perfil opcional;
-- data de criação da conta.
+- data de criação da conta;
+- papéis: Profissional e/ou Contratante (os mesmos das preferências de uso, exibidos como etiquetas);
+- ocupação em poucas palavras e apresentação, ambas opcionais.
+
+O telefone e o e-mail nunca aparecem no perfil público. A pessoa vê o próprio perfil em "Meu perfil" e edita papéis, ocupação, apresentação e cidade em "Editar perfil".
+
+### Histórico de serviços concluídos
+
+*Decisão registrada: o perfil do profissional pode mostrar um histórico de serviços concluídos. Na demonstração, esse conteúdo é simulado e marcado como exemplo.*
+
+- Cada publicação representa um serviço concluído: título, descrição escrita pelo profissional e espaços para fotos. Não há postagens livres sem relação com um serviço.
+- Publicação e avaliação são independentes: uma publicação pode existir sem avaliação e uma avaliação pode existir sem publicação.
+- Quando os dois são do mesmo serviço, a avaliação aponta para o identificador do serviço e é exibida junto da publicação. Nunca se agrupa por nome do cliente, data ou semelhança de texto.
+- As fotos de exemplo são sempre espaços reservados (bloco cinza com ícone de imagem); a demonstração não usa fotografias.
+- Avaliações persistidas e o envio de fotos do portfólio permanecem fora do MVP (seção 24).
 
 ## Configurações
 

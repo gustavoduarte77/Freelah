@@ -20,6 +20,15 @@ const notFound = (res: Response, message = "Conversa não encontrada.") =>
   res.status(404).json({ error: "not_found", message });
 const refuse = (res: Response, error: string, message: string) => res.status(409).json({ error, message });
 
+/** Por que não dá mais para enviar nesta conversa (ou `null` se dá). Também fecha as propostas de valor. */
+export function blockedReason(interestStatus: string, jobStatus: OwnJobStatus): string | null {
+  if (jobStatus === "CANCELLED") return "O contratante cancelou esta oportunidade. A conversa ficou só para consulta.";
+  if (jobStatus === "EXPIRED") return "O prazo desta oportunidade terminou. A conversa ficou só para consulta.";
+  if (interestStatus === "WITHDRAWN") return "O interesse foi retirado. A conversa ficou só para consulta.";
+  if (interestStatus === "REJECTED") return "Outra pessoa foi selecionada. A conversa ficou só para consulta.";
+  return null;
+}
+
 /** Marcador "createdAt|id" da última mensagem vista (ordem estável mesmo com datas iguais). */
 function encodeCursor(message: { createdAt: Date; id: string }): string {
   return `${message.createdAt.toISOString()}|${message.id}`;
@@ -54,15 +63,6 @@ export function createChatRouter(
     res.set("Cache-Control", "no-store");
     next();
   };
-
-  /** Por que não dá mais para enviar nesta conversa (ou `null` se dá). */
-  function blockedReason(interestStatus: string, jobStatus: OwnJobStatus): string | null {
-    if (jobStatus === "CANCELLED") return "O contratante cancelou esta oportunidade. A conversa ficou só para consulta.";
-    if (jobStatus === "EXPIRED") return "O prazo desta oportunidade terminou. A conversa ficou só para consulta.";
-    if (interestStatus === "WITHDRAWN") return "O interesse foi retirado. A conversa ficou só para consulta.";
-    if (interestStatus === "REJECTED") return "Outra pessoa foi selecionada. A conversa ficou só para consulta.";
-    return null;
-  }
 
   const conversationSelect = {
     id: true,

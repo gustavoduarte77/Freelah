@@ -1,4 +1,4 @@
-import { formatJobDate, formatPriceCents, type JobDetail } from "@freelah/shared";
+import { describePriceTerms, formatJobDate, formatJobPrice, type JobDetail } from "@freelah/shared";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable } from "react-native";
 import { useState } from "react";
@@ -143,8 +143,10 @@ function Detail({ job }: { job: JobDetail }) {
       </View>
 
       <View style={[styles.card, styles.sideCol, isWide ? styles.sideWide : null]}>
-        <Text style={styles.price}>{formatPriceCents(job.proposedPriceCents)}</Text>
-        <Text style={styles.negotiable}>{job.negotiable ? "Valor negociável" : "Valor fixo"}</Text>
+        <Text style={styles.price}>{formatJobPrice(job.proposedPriceCents)}</Text>
+        {describePriceTerms(job.proposedPriceCents, job.negotiable) ? (
+          <Text style={styles.negotiable}>{describePriceTerms(job.proposedPriceCents, job.negotiable)}</Text>
+        ) : null}
 
         <View style={styles.facts}>
           <Fact icon="calendar" label="Recebe interessados até" value={formatLocalDate(job.expiresAt)} />

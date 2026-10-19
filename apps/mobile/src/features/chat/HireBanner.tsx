@@ -1,4 +1,4 @@
-import { formatBrDate, formatPriceCents, type Conversation, type MyJobsApiError } from "@freelah/shared";
+import { formatBrDate, formatJobPrice, formatPriceCents, hasDefinedPrice, priceStateOf, type Conversation, type MyJobsApiError } from "@freelah/shared";
 import { useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Icon } from "../../components/Icon";
@@ -81,7 +81,7 @@ export function HireBanner({ conversation, onChanged }: { conversation: Conversa
           <View style={styles.box} accessibilityRole="alert" testID="invite-confirm">
             <View style={styles.col}>
               <Text style={styles.text}>
-                Convidar {other.name} para este serviço por {formatPriceCents(job.proposedPriceCents)}, em {formatBrDate(job.scheduledDate)} às{" "}
+                Convidar {other.name} para este serviço{hasDefinedPrice(job.proposedPriceCents) ? ` por ${formatPriceCents(job.proposedPriceCents)}` : priceStateOf(job.proposedPriceCents) === "NEGOTIABLE" ? " (valor a negociar)" : " (valor a confirmar)"}, em {formatBrDate(job.scheduledDate)} às{" "}
                 {job.startTime}? A vaga só é preenchida quando a pessoa aceitar.
               </Text>
               <View style={styles.row}>
@@ -127,7 +127,7 @@ export function HireBanner({ conversation, onChanged }: { conversation: Conversa
       <Text style={styles.inviteTitle}>Convite para o serviço</Text>
       <Text style={styles.inviteJob}>{job.title}</Text>
       <View style={styles.facts}>
-        <Text style={styles.fact}>Valor: {formatPriceCents(job.proposedPriceCents)}</Text>
+        <Text style={styles.fact}>Valor: {formatJobPrice(job.proposedPriceCents)}</Text>
         <Text style={styles.fact}>Data: {formatBrDate(job.scheduledDate)}</Text>
         <Text style={styles.fact}>Horário: {job.startTime}</Text>
         <Text style={styles.fact}>

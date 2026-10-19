@@ -1,4 +1,4 @@
-import { formatJobDate, formatPriceCents, type ConversationListItem, type MyJobsApiError } from "@freelah/shared";
+import { describePriceTerms, formatJobDate, formatJobPrice, type ConversationListItem, type MyJobsApiError } from "@freelah/shared";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -329,8 +329,10 @@ function ContextPanel({ item }: { item: ConversationListItem | null }) {
           <Text style={styles.contextCategory}>{state.data.category.name}</Text>
           <Text style={styles.contextJob}>{state.data.title}</Text>
           <StatusBadge status={state.data.status} />
-          <Text style={styles.contextPrice}>{formatPriceCents(state.data.proposedPriceCents)}</Text>
-          <Text style={styles.contextMeta}>{state.data.negotiable ? "Valor negociável" : "Valor fixo"}</Text>
+          <Text style={styles.contextPrice}>{formatJobPrice(state.data.proposedPriceCents)}</Text>
+          {describePriceTerms(state.data.proposedPriceCents, state.data.negotiable) ? (
+            <Text style={styles.contextMeta}>{describePriceTerms(state.data.proposedPriceCents, state.data.negotiable)}</Text>
+          ) : null}
           <View style={styles.contextRow}>
             <Icon name="calendar" size={15} color={colors.muted} />
             <Text style={styles.contextMeta}>

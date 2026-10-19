@@ -156,7 +156,9 @@ export function createJobsRouter(
           ...(query.city ? { city: { contains: escapeLike(query.city), mode: "insensitive" } } : {}),
           ...(query.minPriceCents !== undefined || query.maxPriceCents !== undefined
             ? {
+                // Com filtro de valor, quem não tem valor positivo (sem valor ou zero antigo) fica de fora.
                 proposedPriceCents: {
+                  gt: 0,
                   ...(query.minPriceCents !== undefined ? { gte: query.minPriceCents } : {}),
                   ...(query.maxPriceCents !== undefined ? { lte: query.maxPriceCents } : {}),
                 },

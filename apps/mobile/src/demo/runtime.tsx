@@ -4,7 +4,7 @@ import { colors } from "../components/ui";
 import { activeChatId, isChatOnScreen, subscribeChatPresence } from "../lib/liveRefresh";
 import { radius, shadow } from "../theme";
 import { API_URL } from "../lib/api";
-import { HIRE_CONVERSATION_ID, HIRE_TOTAL_STEPS, TOTAL_STEPS } from "./data";
+import { HIRE_CONVERSATION_ID, HIRE_TOTAL_STEPS, STATIC_CONVERSATION_IDS, TOTAL_STEPS } from "./data";
 import { handleDemoRequest } from "./server";
 import {
   advance,
@@ -13,9 +13,11 @@ import {
   backHire,
   getState,
   getVersion,
+  hasPendingOwnProposal,
   isHireAccepted,
   isHireWaitingInvite,
   reset,
+  simulateCounterpart,
   subscribe,
   type DemoState,
 } from "./store";
@@ -101,6 +103,7 @@ function scenarioFor(chatId: string | null, state: DemoState) {
 function DemoControls() {
   const state = useSyncExternalStore(subscribe, getState, getState);
   const chatId = useSyncExternalStore(subscribeChatPresence, activeChatId, activeChatId);
+  const isExample = chatId !== null && STATIC_CONVERSATION_IDS.includes(chatId);
   const { onAdvance, onBack, step, total, atEnd, atStart, note } = scenarioFor(chatId, state);
 
   useEffect(() => {
@@ -108,6 +111,7 @@ function DemoControls() {
     function onKey(event: KeyboardEvent) {
       if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
       if (isTyping(event.target)) return;
+      if (isExample) return;
       const key = event.key.toLowerCase();
       if (key === "a") {
         event.preventDefault();
@@ -119,7 +123,7 @@ function DemoControls() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onAdvance, onBack]);
+  }, [onAdvance, onBack, isExample]);
 
   return (
     <View style={styles.wrap} pointerEvents="box-none">
@@ -127,14 +131,28 @@ function DemoControls() {
         <View style={styles.badge}>
           <Text style={styles.badgeText}>Modo demonstração</Text>
         </View>
-        <Text style={styles.title}>Controles da demonstração</Text>
-        <Text style={styles.step} accessibilityLiveRegion="polite" testID="demo-step">
-          Etapa {step} de {total}
-          {note}
-        </Text>
-        <ControlButton label="Voltar" hint="B" onPress={onBack} disabled={atStart} />
-        <ControlButton label="Avançar" hint="A" onPress={onAdvance} disabled={atEnd} primary />
-        <ControlButton label="Reiniciar" onPress={reset} />
+        {isExample ? (
+          <Text style={styles.title}>Conversa de exemplo (sem roteiro)</Text>
+        ) : (
+          <>
+            <Text style={styles.title}>Controles da demonstração</Text>
+            <Text style={styles.step} accessibilityLiveRegion="polite" testID="demo-step">
+              Etapa {step} de {total}
+              {note}
+            </Text>
+            <ControlButton label="Voltar" hint="B" onPress={onBack} disabled={atStart} />
+            <ControlButton label="Avançar" hint="A" onPress={onAdvance} disabled={atEnd} primary />
+            <ControlButton label="Reiniciar" onPress={reset} />
+          </>
+        )}
+        {/* Proposta de valor da pessoa da demonstração aguardando resposta: o controle responde pela outra parte. */}
+        {chatId && hasPendingOwnProposal(state, chatId) ? (
+          <View style={styles.simulate} testID="demo-proposal-controls">
+            <Text style={styles.title}>Simular resposta à proposta:</Text>
+            <ControlButton label="Aceitar" onPress={() => simulateCounterpart(chatId, "ACCEPTED")} />
+            <ControlButton label="Recusar" onPress={() => simulateCounterpart(chatId, "DECLINED")} />
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -189,6 +207,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     boxShadow: shadow.raised,
   },
+  simulate: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 10, borderLeftWidth: 1, borderLeftColor: colors.border },
   badge: { backgroundColor: colors.warningSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
   badgeText: { fontSize: 11, fontWeight: "800", color: colors.warningText, textTransform: "uppercase" },
   title: { fontSize: 12, fontWeight: "700", color: colors.textSoft },

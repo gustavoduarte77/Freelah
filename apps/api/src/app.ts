@@ -13,9 +13,11 @@ import type { PrismaClient } from "./db";
 import { createJobsRouter } from "./routes/jobs";
 import { createMeRouter } from "./routes/me";
 import { createChatRouter } from "./routes/chat";
+import { createProposalsRouter } from "./routes/proposals";
 import { createInterestsRouter } from "./routes/interests";
 import { createMyJobsRouter } from "./routes/my-jobs";
 import { createPreferencesRouter } from "./routes/preferences";
+import { createProfilesRouter } from "./routes/profiles";
 
 // Com autenticação, o banco é obrigatório: assim nenhuma rota que depende dele some em silêncio.
 export function createApp(config: Pick<Config, "CORS_ORIGINS">): Express;
@@ -52,8 +54,10 @@ export function createApp(
   if (auth && prisma) app.use(createMyJobsRouter(auth, prisma));
   if (auth && prisma) app.use(createInterestsRouter(auth, prisma));
   if (auth && prisma) app.use(createChatRouter(auth, prisma));
+  if (auth && prisma) app.use(createProposalsRouter(auth, prisma));
   // Categorias e oportunidades são públicas (PRD 9): não dependem de sessão.
   if (prisma) app.use(createJobsRouter(prisma));
+  if (prisma) app.use(createProfilesRouter(prisma, auth));
 
   const notFound: RequestHandler = (_req, res) => {
     res.status(404).json({ error: "not_found", message: "Rota não encontrada." });

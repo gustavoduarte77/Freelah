@@ -1,6 +1,7 @@
 import {
   formatJobDate,
-  formatPriceCents,
+  formatJobPrice,
+  hasDefinedPrice,
   isRecoverableError,
   type Category,
   type JobSummary,
@@ -15,6 +16,7 @@ import { Button, colors } from "../../components/ui";
 import { radius } from "../../theme";
 import { JobArt } from "./JobArt";
 import { PhotoBadge } from "./PhotoBadge";
+import { PhotoPlaceholder } from "./PhotoPlaceholder";
 import { useRecovery } from "../recovery/RecoveryProvider";
 
 export const STATUS_LABEL: Record<PublicJobStatus, string> = {
@@ -55,7 +57,11 @@ export function JobCard({ job }: { job: JobSummary }) {
       onPress={() => router.push({ pathname: "/oportunidades/[id]", params: { id: job.id } })}
       style={styles.card}
     >
-      <JobArt categorySlug={job.category.slug} iconSize={34} style={styles.thumb} />
+      {(job.photoCount ?? 0) > 0 ? (
+        <PhotoPlaceholder iconSize={30} style={styles.thumb} testID="card-photo-placeholder" />
+      ) : (
+        <JobArt categorySlug={job.category.slug} iconSize={34} style={styles.thumb} />
+      )}
       <View style={styles.cardBody}>
         <View style={styles.badges}>
           <Text style={styles.category}>{job.category.name}</Text>
@@ -79,8 +85,8 @@ export function JobCard({ job }: { job: JobSummary }) {
         </View>
       </View>
       <View style={styles.priceCol}>
-        <Text style={styles.price}>{formatPriceCents(job.proposedPriceCents)}</Text>
-        {job.negotiable ? <Text style={styles.negotiable}>negociável</Text> : null}
+        <Text style={styles.price}>{formatJobPrice(job.proposedPriceCents)}</Text>
+        {job.negotiable && hasDefinedPrice(job.proposedPriceCents) ? <Text style={styles.negotiable}>negociável</Text> : null}
         <Text style={styles.open}>Ver detalhes</Text>
       </View>
     </InteractiveCard>

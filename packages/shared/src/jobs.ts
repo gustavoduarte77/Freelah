@@ -178,7 +178,8 @@ export const jobSummarySchema = z.object({
   state: z.string(),
   scheduledDate: isoDate,
   startTime: hourMinute,
-  proposedPriceCents: z.number().int().nonnegative(),
+  /** Centavos; `null` = "A negociar" (sem valor definido). */
+  proposedPriceCents: z.number().int().nonnegative().nullable(),
   negotiable: z.boolean(),
   status: publicJobStatusSchema,
   /** Dado de demonstração (PRD 38.2): a interface mostra o selo "Demonstração". */
@@ -221,6 +222,52 @@ export function formatPriceCents(cents: number): string {
     .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   const centavos = (total % 100).toString().padStart(2, "0");
   return `R$ ${reais},${centavos}`;
+}
+
+/** O que aparece no lugar do valor quando a oportunidade não tem preço definido. */
+export const NEGOTIABLE_PRICE_LABEL = "A negociar";
+
+/** Registro antigo com valor zero (ou inválido): não é "A negociar"; precisa ser regularizado pelo responsável. */
+export const PRICE_TO_CONFIRM_LABEL = "Valor a confirmar";
+
+/**
+ * Os três estados do valor de uma oportunidade:
+ * - `DEFINED`: inteiro positivo em centavos;
+ * - `NEGOTIABLE` ("A negociar"): sem valor (`null`/`undefined`), e então a oportunidade é negociável;
+ * - `TO_CONFIRM` ("Valor a confirmar"): dado antigo com zero, negativo ou ilegível. Nunca é convertido
+ *   sozinho em "A negociar": o responsável escolhe um valor ou marca "A negociar" ao editar.
+ */
+export type PriceState = "DEFINED" | "NEGOTIABLE" | "TO_CONFIRM";
+
+export function priceStateOf(cents: number | null | undefined): PriceState {
+  if (cents === null || cents === undefined) return "NEGOTIABLE";
+  return hasDefinedPrice(cents) ? "DEFINED" : "TO_CONFIRM";
+}
+
+/**
+ * Valor para exibir: "R$ 200,00", "A negociar" ou "Valor a confirmar". Nunca "R$ 0,00", `null` ou
+ * `undefined`.
+ */
+export function formatJobPrice(cents: number | null | undefined): string {
+  switch (priceStateOf(cents)) {
+    case "DEFINED":
+      return formatPriceCents(cents as number);
+    case "NEGOTIABLE":
+      return NEGOTIABLE_PRICE_LABEL;
+    default:
+      return PRICE_TO_CONFIRM_LABEL;
+  }
+}
+
+/** Há um valor definido (maior que zero). */
+export function hasDefinedPrice(cents: number | null | undefined): cents is number {
+  return typeof cents === "number" && Number.isFinite(cents) && cents > 0;
+}
+
+/** "Valor negociável" / "Valor fixo" para quem tem preço; `null` quando o próprio valor já diz tudo ("A negociar", "Valor a confirmar"). */
+export function describePriceTerms(cents: number | null | undefined, negotiable: boolean): string | null {
+  if (!hasDefinedPrice(cents)) return null;
+  return negotiable ? "Valor negociável" : "Valor fixo";
 }
 
 /** "2026-09-12" => "12/09/2026". Valor fora do formato volta como veio. */

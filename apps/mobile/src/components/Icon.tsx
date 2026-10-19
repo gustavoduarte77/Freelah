@@ -19,6 +19,9 @@ const PATHS = {
   ],
   book: ["M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z", "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"],
   layers: ["M12 2l10 5-10 5L2 7z", "M2 17l10 5 10-5", "M2 12l10 5 10-5"],
+  monitor: ["rect:2,3,20,14", "M8 21h8", "M12 17v4"],
+  code: ["M16 18l6-6-6-6", "M8 6l-6 6 6 6"],
+  pen: ["M12 20h9", "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"],
   image: ["rect:3,3,18,18", "circle:8.5,8.5,1.5", "M21 15l-5-5L5 21"],
   chevronDown: ["M6 9l6 6 6-6"],
   x: ["M18 6L6 18", "M6 6l12 12"],
@@ -50,6 +53,12 @@ export function iconForCategory(slug: string): IconName {
       return "wrench";
     case "aulas-particulares":
       return "book";
+    case "tecnologia-e-suporte":
+      return "monitor";
+    case "sites-e-aplicativos":
+      return "code";
+    case "design-e-criacao-digital":
+      return "pen";
     default:
       return "briefcase";
   }

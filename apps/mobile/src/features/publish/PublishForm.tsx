@@ -2,12 +2,16 @@ import {
   computeDeadline,
   describeDeadline,
   firstErrorField,
+  maskDateInput,
+  maskPriceInput,
+  maskTimeInput,
   type Category,
   type JobFormErrors,
   type JobFormField,
 } from "@freelah/shared";
 import { useRef, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent, type TextInput } from "react-native";
+import { MaskedTextField } from "../../components/MaskedTextField";
 import { Button, colors, FormError, TextField } from "../../components/ui";
 import { radius, useBreakpoint } from "../../theme";
 import { CategoryChips } from "../jobs/components";
@@ -230,11 +234,12 @@ export function PublishForm({
 
         <View style={styles.row} onLayout={track("where", ["scheduledDate", "deadlineDate", "startTime"])}>
           <View style={styles.field}>
-            <TextField
+            <MaskedTextField
               label="Data do serviço"
               help="Informe o dia em que o trabalho deverá ser realizado."
+              mask={maskDateInput}
               value={values.scheduledDate}
-              onChangeText={(v) => form.setField("scheduledDate", v)}
+              onChangeValue={(v) => form.setField("scheduledDate", v)}
               error={errors.scheduledDate}
               placeholder="DD/MM/AAAA"
               keyboardType="number-pad"
@@ -246,11 +251,12 @@ export function PublishForm({
             />
           </View>
           <View style={styles.field}>
-            <TextField
+            <MaskedTextField
               label="Publicada até"
               help="Informe até quando esta oportunidade ficará disponível para receber interessados. Escolha uma data que permita encontrar e selecionar alguém antes do serviço."
+              mask={maskDateInput}
               value={values.deadlineDate}
-              onChangeText={(v) => form.setField("deadlineDate", v)}
+              onChangeValue={(v) => form.setField("deadlineDate", v)}
               error={errors.deadlineDate}
               placeholder="DD/MM/AAAA"
               keyboardType="number-pad"
@@ -262,11 +268,12 @@ export function PublishForm({
             />
           </View>
           <View style={styles.field}>
-            <TextField
+            <MaskedTextField
               label="Horário"
               help="Informe o horário previsto para começar o serviço."
+              mask={maskTimeInput}
               value={values.startTime}
-              onChangeText={(v) => form.setField("startTime", v)}
+              onChangeValue={(v) => form.setField("startTime", v)}
               error={errors.startTime}
               placeholder="HH:MM"
               keyboardType="number-pad"
@@ -289,32 +296,42 @@ export function PublishForm({
         <View onLayout={track("pay", ["price"])} style={styles.block}>
           <View style={styles.payRow}>
             <View style={styles.field}>
-              <TextField
-                label="Valor (R$)"
-                value={values.price}
-                onChangeText={(v) => form.setField("price", v)}
-                error={errors.price}
-                placeholder="200,00"
-                keyboardType="decimal-pad"
-                maxLength={12}
-                inputRef={priceRef}
-                returnKeyType="done"
+              {values.toNegotiate ? (
+                // "A negociar": o campo mostra isso, sem R$ nem zero, e não aceita digitação.
+                <TextField label="Valor" value="A negociar" editable={false} style={styles.readOnly} />
+              ) : (
+                <MaskedTextField
+                  label="Valor"
+                  prefix="R$"
+                  mask={maskPriceInput}
+                  anchor="end"
+                  value={values.price}
+                  onChangeValue={(v) => form.setField("price", v)}
+                  error={errors.price}
+                  placeholder="0,00"
+                  keyboardType="number-pad"
+                  maxLength={24}
+                  inputRef={priceRef}
+                  returnKeyType="done"
+                />
+              )}
+            </View>
+            <View>
+              <CheckOption
+                label="A negociar"
+                checked={values.toNegotiate}
+                onToggle={() => form.setField("toNegotiate", !values.toNegotiate)}
+              />
+              {/* Sem valor a oportunidade é sempre negociável: a opção fica marcada e travada. */}
+              <CheckOption
+                label="Valor negociável"
+                checked={values.toNegotiate ? true : values.negotiable}
+                disabled={values.toNegotiate}
+                onToggle={() => form.setField("negotiable", !values.negotiable)}
               />
             </View>
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: values.negotiable }}
-              aria-checked={values.negotiable}
-              accessibilityLabel="Valor negociável"
-              onPress={() => form.setField("negotiable", !values.negotiable)}
-              style={styles.checkRow}
-            >
-              <View style={[styles.checkBox, values.negotiable ? styles.checkBoxOn : null]}>
-                {values.negotiable ? <Text style={styles.checkMark}>✓</Text> : null}
-              </View>
-              <Text style={styles.checkLabel}>Valor negociável</Text>
-            </Pressable>
           </View>
+          {values.toNegotiate && errors.price ? <Text style={styles.error}>{errors.price}</Text> : null}
         </View>
       </Section>
       </View>
@@ -322,6 +339,36 @@ export function PublishForm({
 
       <Button title={submitLabel} onPress={submit} loading={submitting} disabled={submitting} />
     </View>
+  );
+}
+
+function CheckOption({
+  label,
+  checked,
+  disabled = false,
+  onToggle,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked, disabled }}
+      aria-checked={checked}
+      aria-disabled={disabled}
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPress={onToggle}
+      style={[styles.checkRow, disabled ? styles.checkDisabled : null]}
+    >
+      <View style={[styles.checkBox, checked ? styles.checkBoxOn : null]}>
+        {checked ? <Text style={styles.checkMark}>✓</Text> : null}
+      </View>
+      <Text style={styles.checkLabel}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -401,6 +448,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   checkBoxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  checkDisabled: { opacity: 0.6, cursor: "auto" },
+  readOnly: { backgroundColor: colors.background, color: colors.textSoft, fontWeight: "700" },
   checkMark: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
   checkLabel: { fontSize: 15, color: colors.text },
 });

@@ -28,6 +28,14 @@ import {
   type OwnJob,
 } from "./jobs-write";
 import type { HttpResponseLike } from "./preferences-api";
+import { ownProfileResponseSchema, type UpdateProfileInput } from "./profile-edit";
+import type { PublicProfile } from "./profiles";
+import {
+  proposalResponseSchema,
+  proposalsResponseSchema,
+  type Proposal,
+  type ProposalsResponse,
+} from "./proposals";
 
 // Cliente das rotas privadas `/me/jobs` (criar, listar, ler, editar, publicar e cancelar as próprias oportunidades).
 // Recebe o `fetch` já autenticado por parâmetro, então roda e é testado sem React nem rede.
@@ -155,6 +163,21 @@ export interface MyJobsApi {
   /** Mensagens da conversa; com `after` (marcador da última vista) devolve só as novas. */
   messages(id: string, after?: string | null): Promise<ChatMessagesResponse>;
   sendMessage(id: string, content: string): Promise<ChatMessage>;
+
+  // --- Propostas de valor no chat (PRD 18.5) ---
+  /** Propostas da conversa (do histórico) e se dá para enviar uma nova agora. */
+  proposals(conversationId: string): Promise<ProposalsResponse>;
+  /** Envia uma proposta de valor (em centavos). A outra pessoa da conversa é sempre a destinatária. */
+  createProposal(conversationId: string, amountCents: number): Promise<Proposal>;
+  /** Só a destinatária aceita ou recusa; só a autora retira. Nenhuma altera o valor publicado nem contrata. */
+  acceptProposal(id: string): Promise<Proposal>;
+  declineProposal(id: string): Promise<Proposal>;
+  withdrawProposal(id: string): Promise<Proposal>;
+  // --- Perfil próprio ---
+  /** O perfil da própria conta (o mesmo conteúdo do público: nunca telefone nem e-mail). */
+  ownProfile(): Promise<PublicProfile>;
+  /** Atualiza papéis, ocupação, apresentação e cidade. */
+  updateProfile(input: UpdateProfileInput): Promise<PublicProfile>;
 }
 
 const errorBodySchema = z.object({
@@ -237,6 +260,13 @@ export function createMyJobsApi(options: { baseUrl: string; fetch: MyJobsFetch }
     const parsed = ownJobResponseSchema.safeParse(json);
     return parsed.success ? { success: true as const, data: parsed.data.job } : parsed;
   };
+
+  async function decideProposal(id: string, action: "accept" | "decline" | "withdraw"): Promise<Proposal> {
+    const result = await request(`${root}/me/proposals/${encodeURIComponent(id)}/${action}`, "POST", {}, (json) =>
+      proposalResponseSchema.safeParse(json),
+    );
+    return result.proposal;
+  }
 
   return {
     create(request, createOptions) {
@@ -335,6 +365,31 @@ export function createMyJobsApi(options: { baseUrl: string; fetch: MyJobsFetch }
       );
       return result.message;
     },
+    proposals(conversationId) {
+      return request(`${root}/me/conversations/${encodeURIComponent(conversationId)}/proposals`, "GET", undefined, (json) =>
+        proposalsResponseSchema.safeParse(json),
+      );
+    },
+    async createProposal(conversationId, amountCents) {
+      const result = await request(
+        `${root}/me/conversations/${encodeURIComponent(conversationId)}/proposals`,
+        "POST",
+        { amountCents },
+        (json) => proposalResponseSchema.safeParse(json),
+      );
+      return result.proposal;
+    },
+    async ownProfile() {
+      const result = await request(`${root}/me/profile`, "GET", undefined, (json) => ownProfileResponseSchema.safeParse(json));
+      return result.profile;
+    },
+    async updateProfile(input) {
+      const result = await request(`${root}/me/profile`, "PATCH", input, (json) => ownProfileResponseSchema.safeParse(json));
+      return result.profile;
+    },
+    acceptProposal: (id) => decideProposal(id, "accept"),
+    declineProposal: (id) => decideProposal(id, "decline"),
+    withdrawProposal: (id) => decideProposal(id, "withdraw"),
     cancel(id) {
       return call("POST", `/${encodeURIComponent(id)}/cancel`, {}, one);
     },

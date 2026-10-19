@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   JOB_DEADLINE_MAX_DAYS,
   JOB_PRICE_MAX_CENTS,
+  NO_PRICE_NEGOTIABLE_MESSAGE,
+  PRICE_TO_REGULARIZE_MESSAGE,
+  validateJobPriceForPublish,
   canCancelJob,
   canEditJob,
   canPublishJob,
@@ -84,12 +87,30 @@ describe("createJobSchema", () => {
     expect(errorsOf({ ...valid, description: "Linha um.\nLinha dois." }).description).toBeUndefined();
   });
 
-  it("valida valor: inteiro, não negativo e dentro do limite", () => {
-    expect(errorsOf({ ...valid, proposedPriceCents: -1 }).proposedPriceCents).toMatch(/negativo/);
+  it("valida valor: inteiro, maior que zero e dentro do limite", () => {
+    expect(errorsOf({ ...valid, proposedPriceCents: -1 }).proposedPriceCents).toMatch(/maior que zero/);
+    expect(errorsOf({ ...valid, proposedPriceCents: 0 }).proposedPriceCents).toMatch(/maior que zero/);
+    expect(errorsOf({ ...valid, proposedPriceCents: 1 }).proposedPriceCents).toBeUndefined();
+    expect(errorsOf({ ...valid, proposedPriceCents: JOB_PRICE_MAX_CENTS }).proposedPriceCents).toBeUndefined();
+    expect(errorsOf({ ...valid, proposedPriceCents: Number.NaN }).proposedPriceCents).toBeDefined();
+    expect(errorsOf({ ...valid, proposedPriceCents: Number.POSITIVE_INFINITY }).proposedPriceCents).toBeDefined();
     expect(errorsOf({ ...valid, proposedPriceCents: 10.5 }).proposedPriceCents).toMatch(/inteiros/);
     expect(errorsOf({ ...valid, proposedPriceCents: "200" }).proposedPriceCents).toBeDefined();
     expect(errorsOf({ ...valid, proposedPriceCents: JOB_PRICE_MAX_CENTS + 1 }).proposedPriceCents).toMatch(/maior/);
-    expect(errorsOf({ ...valid, proposedPriceCents: 0 }).proposedPriceCents).toBeUndefined();
+  });
+
+  it("\"A negociar\": sem valor (null) só vale com negociável verdadeiro", () => {
+    expect(createJobSchema.safeParse({ ...valid, proposedPriceCents: null, negotiable: true }).success).toBe(true);
+    expect(errorsOf({ ...valid, proposedPriceCents: null, negotiable: false }).negotiable).toBe(NO_PRICE_NEGOTIABLE_MESSAGE);
+    expect(errorsOf({ ...valid, proposedPriceCents: null, negotiable: undefined }).negotiable).toBe(NO_PRICE_NEGOTIABLE_MESSAGE);
+    const { proposedPriceCents: _omitted, ...withoutPrice } = valid;
+    expect(errorsOf(withoutPrice).proposedPriceCents).toMatch(/A negociar/);
+  });
+
+  it("o valor é opcional só como null: preço definido segue valendo com negociável ou fixo", () => {
+    for (const negotiable of [true, false]) {
+      expect(createJobSchema.safeParse({ ...valid, proposedPriceCents: 15000, negotiable }).success).toBe(true);
+    }
   });
 
   it("valida estado, categoria, data e horário", () => {
@@ -111,6 +132,41 @@ describe("createJobSchema", () => {
     for (const body of [null, [], "texto", 5, undefined]) {
       expect(createJobSchema.safeParse(body).success).toBe(false);
     }
+  });
+});
+
+describe("validateJobPriceForPublish (rascunhos antigos)", () => {
+  it("aceita valor positivo dentro do limite e 'A negociar' (null + negociável)", () => {
+    expect(validateJobPriceForPublish(1, false)).toEqual({});
+    expect(validateJobPriceForPublish(JOB_PRICE_MAX_CENTS, true)).toEqual({});
+    expect(validateJobPriceForPublish(null, true)).toEqual({});
+  });
+
+  it("recusa zero, negativo, decimal e acima do limite, orientando a definir o valor ou marcar A negociar", () => {
+    for (const value of [0, -1, 10.5, JOB_PRICE_MAX_CENTS + 1, Number.NaN]) {
+      expect(validateJobPriceForPublish(value, true), String(value)).toEqual({ proposedPriceCents: PRICE_TO_REGULARIZE_MESSAGE });
+    }
+    expect(PRICE_TO_REGULARIZE_MESSAGE).toMatch(/A negociar/);
+  });
+
+  it("recusa sem valor e valor fixo", () => {
+    expect(validateJobPriceForPublish(null, false)).toEqual({ negotiable: NO_PRICE_NEGOTIABLE_MESSAGE });
+  });
+});
+
+describe("updateJobSchema e o valor", () => {
+  it("aceita trocar o valor por outro maior que zero ou por null (A negociar)", () => {
+    expect(updateJobSchema.safeParse({ proposedPriceCents: 25000 }).success).toBe(true);
+    expect(updateJobSchema.safeParse({ proposedPriceCents: null }).success).toBe(true);
+    expect(updateJobSchema.safeParse({ proposedPriceCents: null, negotiable: true }).success).toBe(true);
+  });
+
+  it("recusa zero, negativo e a combinação sem valor + valor fixo", () => {
+    expect(updateJobSchema.safeParse({ proposedPriceCents: 0 }).success).toBe(false);
+    expect(updateJobSchema.safeParse({ proposedPriceCents: -5 }).success).toBe(false);
+    const result = updateJobSchema.safeParse({ proposedPriceCents: null, negotiable: false });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(jobFieldErrors(result.error).negotiable).toBe(NO_PRICE_NEGOTIABLE_MESSAGE);
   });
 });
 

@@ -54,7 +54,7 @@ export const myInterestSchema = z.object({
     state: z.string(),
     scheduledDate: z.string(),
     startTime: z.string(),
-    proposedPriceCents: z.number().int().nonnegative(),
+    proposedPriceCents: z.number().int().nonnegative().nullable(),
     negotiable: z.boolean(),
     status: publicJobStatusSchema,
     ownerName: z.string(),

@@ -33,7 +33,7 @@ describe("dados de demonstração", () => {
     }
   });
 
-  it("cobre as cinco categorias entre as oportunidades visíveis", () => {
+  it("cobre todas as categorias do MVP (as cinco originais e as três de tecnologia e criação) entre as oportunidades visíveis", () => {
     const visible = jobs.filter((j) => (j.status === "PUBLISHED" || j.status === "NEGOTIATING") && j.expiresAt > NOW);
     expect(visible).toHaveLength(DEMO_VISIBLE_JOB_COUNT);
     expect(new Set(visible.map((j) => j.category)).size).toBe(MVP_CATEGORIES.length);

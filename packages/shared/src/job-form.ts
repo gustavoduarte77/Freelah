@@ -31,11 +31,16 @@ export interface JobFormValues {
   /** Em reais, como a pessoa digita: "200", "200,00", "R$ 200". */
   price: string;
   negotiable: boolean;
+  /**
+   * "A negociar": a oportunidade não tem valor definido. Com isso ligado o campo de valor não vale
+   * (nem o que estiver digitado) e a API recebe `proposedPriceCents: null` e `negotiable: true`.
+   */
+  toNegotiate: boolean;
   /** Último dia da publicação, "DD/MM/AAAA". */
   deadlineDate: string;
 }
 
-export type JobFormField = Exclude<keyof JobFormValues, "negotiable">;
+export type JobFormField = Exclude<keyof JobFormValues, "negotiable" | "toNegotiate">;
 /** Mensagens por campo; "_" é o que não pertence a nenhum campo. */
 export type JobFormErrors = Partial<Record<JobFormField | "_", string>>;
 
@@ -51,6 +56,7 @@ export function emptyJobForm(defaults: { city?: string } = {}): JobFormValues {
     startTime: "",
     price: "",
     negotiable: false,
+    toNegotiate: false,
     deadlineDate: "",
   };
 }
@@ -71,6 +77,19 @@ export function maskDateInput(raw: string): string {
 export function maskTimeInput(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 4);
   return digits.length <= 2 ? digits : `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
+/**
+ * Valor digitado como centavos que se deslocam à esquerda: "2" => "0,02", "20000" => "200,00",
+ * "123456" => "1.234,56". Só os dígitos contam (o resto é ignorado, inclusive ao colar) e no máximo 8,
+ * que é o teto da API (JOB_PRICE_MAX_CENTS). Sem dígitos (ou só zeros) devolve "": preço ainda não informado.
+ */
+export function maskPriceInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").replace(/^0+/, "").slice(0, 8);
+  if (!digits) return "";
+  const padded = digits.padStart(3, "0");
+  const reais = padded.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${reais},${padded.slice(-2)}`;
 }
 
 /** Duas letras maiúsculas. */
@@ -207,6 +226,8 @@ const SERVER_FIELD_TO_FORM: Record<string, JobFormField | "_"> = {
   scheduledDate: "scheduledDate",
   startTime: "startTime",
   proposedPriceCents: "price",
+  // "Sem valor e valor fixo": quem corrige é o campo de valor.
+  negotiable: "price",
   expiresAt: "deadlineDate",
 };
 
@@ -222,6 +243,7 @@ export function mapServerFields(fields: Record<string, string>): JobFormErrors {
 
 export const PRICE_REQUIRED_MESSAGE = "Informe o valor.";
 export const PRICE_FORMAT_MESSAGE = "Digite um valor em reais, como 200 ou 200,00.";
+export const PRICE_ZERO_MESSAGE = "Informe um valor maior que zero.";
 export const DATE_FORMAT_MESSAGE = "Informe a data no formato DD/MM/AAAA, com um dia que exista.";
 export const TIME_FORMAT_MESSAGE = "Informe o horário no formato HH:MM, como 08:00.";
 
@@ -244,10 +266,13 @@ export function buildCreateJobRequest(values: JobFormValues, now: Date): BuildRe
 
   // Valor
   let cents: number | null = null;
-  if (!values.price.trim()) errors.price = PRICE_REQUIRED_MESSAGE;
+  if (values.toNegotiate) {
+    // "A negociar": não há valor a validar (o que estiver digitado é ignorado).
+  } else if (!values.price.trim()) errors.price = PRICE_REQUIRED_MESSAGE;
   else {
-    cents = parseReaisToCents(values.price);
+    cents = parsePriceInput(values.price);
     if (cents === null) errors.price = PRICE_FORMAT_MESSAGE;
+    else if (cents === 0) errors.price = PRICE_ZERO_MESSAGE;
   }
 
   // Data e horário do serviço
@@ -275,9 +300,11 @@ export function buildCreateJobRequest(values: JobFormValues, now: Date): BuildRe
     categoryId: values.categoryId,
     city: values.city,
     state: values.state,
-    negotiable: values.negotiable,
+    // Sem valor definido a oportunidade é sempre negociável.
+    negotiable: values.toNegotiate ? true : values.negotiable,
   };
-  if (cents !== null) candidate.proposedPriceCents = cents;
+  if (values.toNegotiate) candidate.proposedPriceCents = null;
+  else if (cents !== null) candidate.proposedPriceCents = cents;
   if (scheduledIso) candidate.scheduledDate = scheduledIso;
   if (timeOk) candidate.startTime = values.startTime.trim();
   if (!("error" in deadline)) candidate.expiresAt = deadline.instant.toISOString();
@@ -332,6 +359,21 @@ export function firstErrorField(errors: JobFormErrors): JobFormField | null {
 // Edição: da oportunidade para o formulário, e do formulário para só o que mudou
 // ---------------------------------------------------------------------------
 
+/**
+ * Lê o texto do campo de valor em centavos: o formato da máscara ("1.234,56") ou o digitado à mão
+ * ("200", "R$ 10,50"). `null` se não for um valor válido.
+ */
+export function parsePriceInput(text: string): number | null {
+  const trimmed = text.trim().replace(/^R\$\s*/i, "");
+  if (/^\d{1,3}(\.\d{3})*,\d{2}$/.test(trimmed)) return Number(trimmed.replace(/\./g, "").replace(",", ""));
+  return parseReaisToCents(trimmed);
+}
+
+/** 123456 => "1.234,56", o texto que a máscara mostra. Zero vira "" (sem preço informado). */
+export function centsToPriceInput(cents: number): string {
+  return maskPriceInput(String(Math.max(0, Math.round(cents))));
+}
+
 /** 15000 => "150,00" (como a pessoa digita; sem separador de milhar). */
 export function centsToReaisInput(cents: number): string {
   return `${Math.floor(cents / 100)},${pad(cents % 100)}`;
@@ -348,8 +390,10 @@ export function jobToFormValues(job: OwnJob): JobFormValues {
     state: job.state,
     scheduledDate: formatBrDate(job.scheduledDate),
     startTime: job.startTime,
-    price: centsToReaisInput(job.proposedPriceCents),
+    // Sem valor (ou dado antigo com zero) o campo fica vazio; só a ausência explícita liga "A negociar".
+    price: job.proposedPriceCents === null ? "" : centsToPriceInput(job.proposedPriceCents),
     negotiable: job.negotiable,
+    toNegotiate: job.proposedPriceCents === null,
     deadlineDate: formatBrDate(brasiliaDay(new Date(job.expiresAt))),
   };
 }

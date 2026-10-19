@@ -1,4 +1,4 @@
-import { makeExcerpt } from "@freelah/shared";
+import { makeExcerpt, type CompletedService, type ProfileRole } from "@freelah/shared";
 
 // Dados fictícios do Modo Demonstração Offline. Nada aqui existe no banco real; as datas são
 // relativas ao dia em que o aplicativo é aberto, para que nenhuma oportunidade apareça expirada.
@@ -22,6 +22,9 @@ export const CATEGORIES = [
   { id: "d3a10001-0000-4000-8000-000000000003", slug: "construcao-civil", name: "Construção Civil" },
   { id: "d3a10001-0000-4000-8000-000000000004", slug: "servicos-de-manutencao", name: "Serviços de Manutenção" },
   { id: "d3a10001-0000-4000-8000-000000000005", slug: "aulas-particulares", name: "Aulas Particulares" },
+  { id: "d3a10001-0000-4000-8000-000000000006", slug: "tecnologia-e-suporte", name: "Tecnologia e Suporte" },
+  { id: "d3a10001-0000-4000-8000-000000000007", slug: "sites-e-aplicativos", name: "Sites e Aplicativos" },
+  { id: "d3a10001-0000-4000-8000-000000000008", slug: "design-e-criacao-digital", name: "Design e Criação Digital" },
 ] as const;
 
 type CategorySlug = (typeof CATEGORIES)[number]["slug"];
@@ -58,7 +61,8 @@ export interface DemoJob {
   state: string;
   scheduledDate: string;
   startTime: string;
-  proposedPriceCents: number;
+  /** Centavos; `null` = "A negociar" (os anúncios fictícios sempre têm valor). */
+  proposedPriceCents: number | null;
   negotiable: boolean;
   ownerName: string;
   ownerCity: string;
@@ -316,6 +320,7 @@ const SEEDS: JobSeed[] = [
     // Segundo roteiro: aqui a conta de demonstração é quem contrata (veja HIRE_* abaixo).
     key: "eletrica",
     photos: 2,
+    negotiable: true,
     title: "Troca de chuveiro e tomadas da cozinha",
     cat: "servicos-de-manutencao",
     owner: "Lucas Oliveira",
@@ -329,6 +334,105 @@ const SEEDS: JobSeed[] = [
       "Preciso trocar o chuveiro elétrico do banheiro (220 V) e substituir duas tomadas antigas da cozinha. O chuveiro novo e as tomadas já foram comprados; falta um eletricista para a instalação.",
     extra: "Casa térrea. O quadro de energia fica na área de serviço.",
     mine: true,
+  },
+  {
+    key: "notebook",
+    photos: 2,
+    title: "Formatação e limpeza de notebook lento",
+    cat: "tecnologia-e-suporte",
+    owner: "Renato Faria",
+    ownerCity: "Cataguases",
+    city: "Cataguases",
+    inDays: 4,
+    time: "15:00",
+    cents: 12000,
+    negotiable: true,
+    publishedDaysAgo: 1,
+    description:
+      "Meu notebook está muito lento e demora para ligar. Preciso de alguém para formatar, reinstalar o Windows e os programas básicos (navegador, leitor de PDF e pacote de escritório) e fazer uma limpeza interna. Os arquivos já estão salvos em um HD externo.",
+    extra: "Posso levar o notebook até o local combinado ou receber o profissional em casa.",
+  },
+  {
+    key: "wifi",
+    photos: 1,
+    title: "Configuração de Wi-Fi e roteador em casa",
+    cat: "tecnologia-e-suporte",
+    owner: "Beatriz Moreira",
+    ownerCity: "Leopoldina",
+    city: "Leopoldina",
+    inDays: 3,
+    time: "10:00",
+    cents: 9000,
+    publishedDaysAgo: 1,
+    description:
+      "O sinal de internet não chega aos quartos do fundo da casa. Preciso de ajuda para configurar o roteador novo, reposicionar o equipamento e instalar um repetidor de sinal. Todos os equipamentos já foram comprados.",
+    extra: "Casa com dois andares. O roteador fica na sala.",
+  },
+  {
+    key: "site-loja",
+    photos: 3,
+    title: "Criação de site simples para loja de roupas",
+    cat: "sites-e-aplicativos",
+    owner: "Loja Estilo Mineiro",
+    ownerCity: "Muriaé",
+    city: "Muriaé",
+    inDays: 12,
+    time: "09:00",
+    cents: 80000,
+    negotiable: true,
+    publishedDaysAgo: 0,
+    description:
+      "Quero um site de apresentação para a loja, com página inicial, catálogo de produtos com fotos, endereço, horário de funcionamento e botão para contato por WhatsApp. Não precisa de pagamento online. Tenho logotipo e fotos dos produtos.",
+    extra: "Combino as etapas por mensagem. Prefiro entregas parciais a cada semana.",
+  },
+  {
+    key: "planilha",
+    photos: 2,
+    title: "Automação de planilha de controle de estoque",
+    cat: "sites-e-aplicativos",
+    owner: "Padaria Pão Quente",
+    ownerCity: "Cataguases",
+    city: "Cataguases",
+    inDays: 7,
+    time: "13:30",
+    cents: 35000,
+    publishedDaysAgo: 0,
+    description:
+      "Controlo o estoque da padaria em uma planilha e quero que ela calcule sozinha as quantidades mínimas, avise quando um item estiver acabando e gere um resumo semanal de compras. Preciso de alguém que conheça fórmulas e automações de planilha.",
+    extra: "A planilha atual tem cerca de 120 itens.",
+  },
+  {
+    key: "logotipo",
+    photos: 3,
+    title: "Criação de logotipo para confeitaria caseira",
+    cat: "design-e-criacao-digital",
+    owner: "Juliana Prado",
+    ownerCity: "Cataguases",
+    city: "Cataguases",
+    inDays: 9,
+    time: "16:00",
+    cents: 25000,
+    negotiable: true,
+    publishedDaysAgo: 0,
+    description:
+      "Estou abrindo uma confeitaria caseira e preciso de um logotipo simples e delicado, em versão colorida e em preto e branco, para usar em embalagens e redes sociais. Aceito até duas rodadas de ajustes.",
+    extra: "Entrega dos arquivos em PNG e PDF.",
+  },
+  {
+    key: "posts-video",
+    photos: 4,
+    title: "Posts para redes sociais e edição de vídeo curto",
+    cat: "design-e-criacao-digital",
+    owner: "Studio Corpo em Movimento",
+    ownerCity: "Leopoldina",
+    city: "Leopoldina",
+    inDays: 6,
+    time: "11:00",
+    cents: 40000,
+    publishedDaysAgo: 0,
+    description:
+      "Preciso de 8 posts para o Instagram do estúdio de pilates e da edição de um vídeo de 40 segundos com legenda e trilha livre de direitos autorais. Envio os textos e o material bruto pelo chat.",
+    extra: "Prazo de entrega de uma semana depois de receber o material.",
   },
 ];
 
@@ -376,6 +480,14 @@ export const HIRE_OTHER_NAME = "Roberto Andrade";
 export const HIRE_OTHER_CITY = "Cataguases";
 export const HIRE_OTHER_PROFILE_ID = "demo-profile-roberto";
 
+/**
+ * Roberto NÃO envia proposta no roteiro (a conversa segue direto para o convite). Esta etapa fica fora do
+ * alcance do roteiro de propósito: nenhuma proposta do roteiro é criada, e as salvas de versões antigas são
+ * removidas ao carregar. Lucas ainda pode propor um valor nessa conversa (o anúncio é negociável).
+ */
+export const HIRE_PROPOSAL_STEP = 99;
+export const HIRE_PROPOSAL_AMOUNT_CENTS = 16500;
+
 /** Etapas: 1 = interesse de Roberto, conversa vazia; 2 a 5 = uma mensagem por etapa; 6 = Roberto aceita o convite. */
 export const HIRE_TOTAL_STEPS = 6;
 export const HIRE_ACCEPT_STEP = 6;
@@ -394,6 +506,17 @@ export const HIRE_MESSAGES: Array<{ id: string; fromMe: boolean; content: string
 // Perfis públicos. As avaliações existem só no perfil do profissional e são fictícias (isDemo).
 // ---------------------------------------------------------------------------
 
+/** Id do perfil público da própria conta de demonstração (Lucas): o único que a edição de perfil altera. */
+export const DEMO_OWN_PROFILE_ID = "demo-profile-lucas";
+
+const completed = (id: string, title: string, description: string, days: number, photoCount: number): CompletedService => ({
+  id,
+  title,
+  description,
+  completedAt: daysAgo(days),
+  photoCount,
+});
+
 export const PROFILES = [
   {
     id: SCRIPT_OTHER_PROFILE_ID,
@@ -405,12 +528,56 @@ export const PROFILES = [
     bio: "Moro em Cataguases e uso o Freelah para encontrar profissionais da região para pequenos serviços em casa.",
     // Contratante: não oferece serviços nem tem avaliações profissionais, então essas seções não aparecem.
     services: [],
-    reviews: [],
+    reviews: [] as DemoReview[],
+    completedServices: [] as CompletedService[],
+    roles: ["CLIENT"] as ProfileRole[],
     isDemo: true,
   },
   {
-    // A própria conta de demonstração (sem telefone nem e-mail). Ainda não há link para ela no app.
-    id: "demo-profile-lucas",
+    id: "demo-profile-carlos",
+    name: "Carlos Almeida",
+    city: "Cataguases",
+    state: "MG",
+    avatarUrl: null,
+    headline: null,
+    bio: "Reformando a casa aos poucos e contratando profissionais da região para os serviços que não consigo fazer.",
+    services: [],
+    reviews: [] as DemoReview[],
+    completedServices: [] as CompletedService[],
+    roles: ["CLIENT"] as ProfileRole[],
+    isDemo: true,
+  },
+  {
+    id: "demo-profile-fernanda",
+    name: "Fernanda Lima",
+    city: "Cataguases",
+    state: "MG",
+    avatarUrl: null,
+    headline: null,
+    bio: "Moro em apartamento alugado e procuro quem resolva pequenos reparos hidráulicos e elétricos com cuidado.",
+    services: [],
+    reviews: [] as DemoReview[],
+    completedServices: [] as CompletedService[],
+    roles: ["CLIENT"] as ProfileRole[],
+    isDemo: true,
+  },
+  {
+    id: "demo-profile-paulo",
+    name: "Paulo Henrique",
+    city: "Cataguases",
+    state: "MG",
+    avatarUrl: null,
+    headline: null,
+    bio: "Estou reformando o banheiro da casa e prefiro combinar valores e prazos direto com quem vai executar o serviço.",
+    services: [],
+    reviews: [] as DemoReview[],
+    completedServices: [] as CompletedService[],
+    roles: ["CLIENT"] as ProfileRole[],
+    isDemo: true,
+  },
+  {
+    // A própria conta de demonstração (sem telefone nem e-mail). Editável em "Meu perfil".
+    id: DEMO_OWN_PROFILE_ID,
     name: DEMO_USER.name,
     city: DEMO_USER.city,
     state: "MG",
@@ -418,7 +585,16 @@ export const PROFILES = [
     headline: "Pintura e pequenos reparos",
     bio: "Faço pintura residencial e pequenos serviços de manutenção em Cataguases e região.",
     services: ["Pintura residencial", "Instalação de ventiladores e luminárias", "Pequenos reparos hidráulicos"],
-    reviews: [],
+    // Serviço com avaliação (mesmo serviceId), serviço sem avaliação e avaliação sem publicação.
+    completedServices: [
+      completed("demo-service-lucas-quarto", "Pintura de quarto", "Pintura de um quarto de 12 m² com duas demãos e acabamento liso. Tudo protegido e limpo no fim do dia.", 18, 3),
+      completed("demo-service-lucas-ventilador", "Instalação de ventilador de teto", "Ventilador de teto instalado na sala, com teste de funcionamento e velocidades.", 34, 2),
+    ],
+    reviews: [
+      { author: "Carolina T.", rating: 5, comment: "Quarto pintado no prazo e sem sujeira. Recomendo.", serviceTitle: "Pintura de quarto", serviceId: "demo-service-lucas-quarto", createdAt: daysAgo(16) },
+      { author: "Marcos V.", rating: 4, comment: "Bom trabalho e atencioso com os móveis.", serviceTitle: null, serviceId: null, createdAt: daysAgo(52) },
+    ] as DemoReview[],
+    roles: ["PROFESSIONAL", "CLIENT"] as ProfileRole[],
     isDemo: true,
   },
   {
@@ -430,14 +606,31 @@ export const PROFILES = [
     headline: "Eletricista residencial",
     bio: "Faço instalações e reparos elétricos em casas e pequenos comércios de Cataguases e região. Explico o serviço antes de começar e deixo tudo limpo ao terminar.",
     services: ["Instalação de chuveiros", "Troca de tomadas e interruptores", "Instalação de luminárias", "Revisão de quadro de energia"],
-    reviews: [
-      { author: "Helena M.", rating: 5, comment: "Trocou o chuveiro rapidinho e ainda explicou como evitar o disjuntor desarmando.", serviceTitle: "Instalação de chuveiro", createdAt: daysAgo(12) },
-      { author: "Sérgio P.", rating: 5, comment: "Pontual e caprichoso. Deixou a cozinha limpa depois de trocar as tomadas.", serviceTitle: "Troca de tomadas", createdAt: daysAgo(26) },
-      { author: "Ana Clara R.", rating: 4, comment: "Ótimo serviço. Só precisou remarcar o horário uma vez, mas avisou com antecedência.", serviceTitle: "Instalação de luminárias", createdAt: daysAgo(41) },
+    completedServices: [
+      completed("demo-service-roberto-chuveiro", "Instalação de chuveiro elétrico", "Chuveiro de 220 V instalado com fiação nova e disjuntor adequado, testado antes de ir embora.", 12, 3),
+      completed("demo-service-roberto-tomadas", "Troca de tomadas da cozinha", "Troca de quatro tomadas e dois interruptores na cozinha, com a energia desligada e tudo conferido.", 26, 2),
+      completed("demo-service-roberto-quadro", "Revisão de quadro de energia", "Revisão do quadro de uma casa térrea, com identificação dos circuitos e aperto das conexões.", 60, 1),
     ],
+    reviews: [
+      { author: "Helena M.", rating: 5, comment: "Trocou o chuveiro rapidinho e ainda explicou como evitar o disjuntor desarmando.", serviceTitle: "Instalação de chuveiro elétrico", serviceId: "demo-service-roberto-chuveiro", createdAt: daysAgo(12) },
+      { author: "Sérgio P.", rating: 5, comment: "Pontual e caprichoso. Deixou a cozinha limpa depois de trocar as tomadas.", serviceTitle: "Troca de tomadas da cozinha", serviceId: "demo-service-roberto-tomadas", createdAt: daysAgo(26) },
+      // Avaliação sem publicação: o serviço dela não foi publicado no perfil.
+      { author: "Ana Clara R.", rating: 4, comment: "Ótimo serviço. Só precisou remarcar o horário uma vez, mas avisou com antecedência.", serviceTitle: "Instalação de luminárias", serviceId: null, createdAt: daysAgo(41) },
+    ] as DemoReview[],
+    roles: ["PROFESSIONAL"] as ProfileRole[],
     isDemo: true,
   },
 ];
+
+/** Avaliação de exemplo do perfil (ligada a um serviço concluído por `serviceId`, ou não). */
+export interface DemoReview {
+  author: string;
+  rating: number;
+  comment: string;
+  serviceTitle: string | null;
+  serviceId: string | null;
+  createdAt: string;
+}
 
 /** Etapas: 1 = interesse registrado; 2 a 6 = uma mensagem por etapa; 7 = convite formal. */
 export const TOTAL_STEPS = 7;
@@ -455,6 +648,7 @@ export const SCRIPT_MESSAGES: Array<{ id: string; fromMe: boolean; content: stri
 export const OTHER_INTERESTS = [
   { id: "demo-interest-ventilador", jobId: "demo-job-ventilador", createdAt: daysAgo(2) },
   { id: "demo-interest-torneira", jobId: "demo-job-torneira", createdAt: daysAgo(1) },
+  { id: "demo-interest-banheiro", jobId: "demo-job-banheiro", createdAt: daysAgo(1) },
 ];
 
 /** Quem demonstrou interesse nas oportunidades da conta (só nome e cidade, como na API real). */
@@ -467,3 +661,68 @@ export const INTERESTED_IN_MINE: Record<string, Array<{ id: string; name: string
 };
 
 export const SCRIPT_INTEREST_CREATED_AT = daysAgo(1);
+
+// ---------------------------------------------------------------------------
+// Conversas de exemplo (além dos dois roteiros). Lucas é o profissional que demonstrou interesse; as
+// mensagens são fixas e não podem ser enviadas. Servem para mostrar o contexto de cada serviço: valor
+// fixo (sem propostas) e valor negociável (dá para "Propor valor" e simular a resposta).
+// ---------------------------------------------------------------------------
+
+const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000).toISOString();
+
+export interface StaticConversation {
+  id: string;
+  jobId: string;
+  interestId: string;
+  otherName: string;
+  otherProfileId: string;
+  /** `fromMe` é do ponto de vista de Lucas. */
+  messages: Array<{ id: string; fromMe: boolean; content: string; createdAt: string }>;
+}
+
+export const STATIC_CONVERSATIONS: StaticConversation[] = [
+  {
+    id: "demo-conversation-ventilador",
+    jobId: "demo-job-ventilador",
+    interestId: "demo-interest-ventilador",
+    otherName: "Carlos Almeida",
+    otherProfileId: "demo-profile-carlos",
+    messages: [
+      { id: "demo-vent-1", fromMe: false, content: "Oi, Lucas! Vi que você demonstrou interesse na instalação dos ventiladores. Você já instalou ventilador de teto antes?", createdAt: minutesAgo(190) },
+      { id: "demo-vent-2", fromMe: true, content: "Oi, Carlos! Já instalei vários, em laje e em forro de madeira. Faço a fixação e a ligação elétrica com segurança.", createdAt: minutesAgo(185) },
+      { id: "demo-vent-3", fromMe: false, content: "Ótimo. São dois ventiladores, no quarto e na sala. O valor anunciado de R$ 120,00 está de acordo para você?", createdAt: minutesAgo(170) },
+      { id: "demo-vent-4", fromMe: true, content: "Está sim, R$ 120,00 pelos dois. Levo a escada e as ferramentas.", createdAt: minutesAgo(165) },
+      { id: "demo-vent-5", fromMe: false, content: "Perfeito. Vou conferir minha agenda e te envio o convite pelo Freelah para confirmar a contratação.", createdAt: minutesAgo(150) },
+    ],
+  },
+  {
+    id: "demo-conversation-torneira",
+    jobId: "demo-job-torneira",
+    interestId: "demo-interest-torneira",
+    otherName: "Fernanda Lima",
+    otherProfileId: "demo-profile-fernanda",
+    messages: [
+      { id: "demo-torn-1", fromMe: true, content: "Olá, Fernanda! Tenho interesse no reparo da torneira. O vazamento é no registro ou na própria torneira?", createdAt: minutesAgo(1560) },
+      { id: "demo-torn-2", fromMe: false, content: "Olá, Lucas! É na torneira da pia da cozinha, pinga o dia todo. Acho que precisa trocar o vedante.", createdAt: minutesAgo(1540) },
+      { id: "demo-torn-3", fromMe: true, content: "Provavelmente é o vedante ou o reparo interno. Levo as peças de reposição; se precisar trocar a torneira inteira, aviso antes de qualquer custo.", createdAt: minutesAgo(1520) },
+      { id: "demo-torn-4", fromMe: false, content: "Combinado. Pode ser na data do anúncio, às 10h30?", createdAt: minutesAgo(1500) },
+      { id: "demo-torn-5", fromMe: true, content: "Pode sim. Fico no aguardo do seu convite para confirmar.", createdAt: minutesAgo(1490) },
+    ],
+  },
+  {
+    id: "demo-conversation-banheiro",
+    jobId: "demo-job-banheiro",
+    interestId: "demo-interest-banheiro",
+    otherName: "Paulo Henrique",
+    otherProfileId: "demo-profile-paulo",
+    messages: [
+      { id: "demo-banh-1", fromMe: false, content: "Boa tarde, Lucas. Recebi seu interesse na troca do revestimento do banheiro. São cerca de 6 m² de parede e 4 m² de piso.", createdAt: minutesAgo(300) },
+      { id: "demo-banh-2", fromMe: true, content: "Boa tarde, Paulo! Pelo tamanho, faço em dois a três dias, com remoção do antigo e rejunte. Você já tem o material?", createdAt: minutesAgo(290) },
+      { id: "demo-banh-3", fromMe: false, content: "O revestimento já está comprado. O valor anunciado é R$ 1.800,00, mas é negociável. Você consegue fazer por menos?", createdAt: minutesAgo(270) },
+      { id: "demo-banh-4", fromMe: true, content: "Se eu usar a argamassa que você já comprou, consigo por R$ 1.650,00 com a mão de obra completa.", createdAt: minutesAgo(260) },
+      { id: "demo-banh-5", fromMe: false, content: "Fechado nesse valor. Registre a proposta aqui no Freelah para ficar combinado, por favor.", createdAt: minutesAgo(240) },
+    ],
+  },
+];
+
+export const STATIC_CONVERSATION_IDS: readonly string[] = STATIC_CONVERSATIONS.map((item) => item.id);
